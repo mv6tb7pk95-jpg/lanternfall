@@ -17,6 +17,18 @@
   .hp i{position:absolute;left:0;top:0;bottom:0;width:100%;background:linear-gradient(#f06a6a,#b5302f)}
   .hp span{position:absolute;inset:0;text-align:center;line-height:16px;font-size:10px;font-weight:700;text-shadow:1px 1px 0 #000}
   .info{margin-top:6px;font-size:11px;text-shadow:1px 1px 0 #000;color:#ffd27a}
+  #chName{margin-top:2px;font-size:10px;color:#9d96b5;text-shadow:1px 1px 0 #000}
+
+  /* boss bar */
+  #boss{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:5;width:min(300px,40vw);pointer-events:none;text-align:center}
+  #bossName{font-size:11px;color:#ff9a8a;text-shadow:1px 1px 0 #000;margin-bottom:3px}
+  .bb{height:12px;background:#000;border:2px solid #b8893a;position:relative}
+  .bb i{position:absolute;left:0;top:0;bottom:0;width:100%;background:linear-gradient(#d42a30,#6a101c)}
+  @media(max-width:700px){#boss{top:72px}}
+
+  /* toast */
+  #toast{position:fixed;top:22%;left:50%;transform:translateX(-50%);z-index:8;background:rgba(28,25,48,.92);border:2px solid #b8893a;
+    padding:8px 16px;border-radius:6px;font-size:13px;color:#ffd27a;pointer-events:none;white-space:nowrap}
 
   /* skill buttons */
   #skills{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:5}
@@ -32,26 +44,64 @@
   #pad button{width:62px;height:62px;border-radius:50%;background:rgba(28,25,48,.85);border:2px solid #b8893a;color:#f4ecd8;
     font:inherit;font-size:12px;touch-action:none;padding:0}
   #pad button:active{background:rgba(70,60,110,.9)}
-  #jumpWrap{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:5}
-  #jumpWrap button{width:70px;height:70px;border-radius:50%;background:rgba(28,25,48,.85);border:2px solid #b8893a;color:#f4ecd8;
+  #actWrap{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:5;display:flex;gap:12px;align-items:flex-end}
+  #actWrap button{width:66px;height:66px;border-radius:50%;background:rgba(28,25,48,.85);border:2px solid #b8893a;color:#f4ecd8;
     font:inherit;font-size:12px;touch-action:none;padding:0}
-  #jumpWrap button:active{background:rgba(70,60,110,.9)}
+  #actWrap button.atk{width:80px;height:80px;border-color:#ffd27a;font-size:14px}
+  #actWrap button:active{background:rgba(70,60,110,.9)}
 
-  /* class select / game over */
-  #select,#over{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  /* full-screen panels */
+  .screen{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
     padding:14px;box-sizing:border-box;background:radial-gradient(ellipse at center,#2a2642,#0b0912)}
-  #over{background:rgba(7,6,13,.88);z-index:11;gap:10px}
   h1{color:#ffd27a;font-size:28px;letter-spacing:4px;margin:0 0 6px;text-shadow:0 4px 0 #3a2a10;text-align:center}
-  .sub{color:#9d96b5;font-size:12px;margin:0 0 18px;text-align:center}
-  #cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;width:100%;max-width:920px}
+  h2{color:#ffd27a;font-size:16px;margin:0 0 6px;text-align:center}
+  .sub{color:#9d96b5;font-size:12px;margin:0 0 14px;text-align:center}
+  .btn{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;font-size:14px;padding:12px 22px;
+    box-shadow:0 4px 0 #000;touch-action:manipulation;min-width:220px}
+  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
+  .btn:disabled{opacity:.45}
+  .btn.small{min-width:0;font-size:12px;padding:8px 14px}
+  .col{display:flex;flex-direction:column;gap:12px;align-items:center}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .help{margin-top:14px;color:#7d7796;font-size:10px;text-align:center;line-height:1.6}
+
+  #cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;width:100%;max-width:920px;margin-bottom:12px}
   .card{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;padding:14px 8px;box-shadow:0 4px 0 #000;text-align:center;touch-action:manipulation}
   .card:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
   .card b{display:block;color:#ffd27a;font-size:13px;margin-bottom:6px}
   .card small{display:block;color:#9d96b5;font-size:10px;line-height:1.5;margin-top:3px}
-  #retry{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;font-size:14px;padding:10px 22px;box-shadow:0 4px 0 #000}
-  #overTxt{color:#ffd27a;font-size:16px}
-  .help{margin-top:16px;color:#7d7796;font-size:10px;text-align:center;line-height:1.6}
   @media(max-width:760px){#cards{grid-template-columns:repeat(2,1fr)}}
+
+  #chList{display:flex;flex-direction:column;gap:10px;width:min(520px,92vw);margin-bottom:14px}
+  .chap{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;padding:12px;text-align:left;box-shadow:0 4px 0 #000;touch-action:manipulation}
+  .chap b{display:block;color:#ffd27a;font-size:14px;margin-bottom:4px}
+  .chap small{display:block;color:#9d96b5;font-size:11px;line-height:1.5}
+  .chap:disabled{opacity:.5}
+
+  /* forge */
+  #forge{justify-content:flex-start;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+  #forge>*{flex-shrink:0}
+  .fbox{width:100%;max-width:900px;box-sizing:border-box;background:rgba(31,27,51,.8);border:2px solid #b8893a;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;line-height:1.6;color:#cfc8e6}
+  .fbox b{color:#ffd27a}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;width:100%;max-width:900px;margin-bottom:12px}
+  .item{background:#1f1b33;border:2px solid #555;border-radius:8px;padding:8px;text-align:left}
+  .item b{display:block;font-size:12px}
+  .item small{display:block;color:#9d96b5;font-size:10px;line-height:1.45;margin-top:2px}
+  .item small.note{color:#7d7796;font-style:italic}
+  .item small.tag{color:#ffd27a;font-weight:700}
+  .item .eq{margin-top:6px;width:100%;background:#2b2646;border:2px solid #b8893a;border-radius:6px;color:#f4ecd8;font:inherit;font-size:10px;padding:6px;touch-action:manipulation}
+  #fMsg{color:#ff9a8a;font-size:12px;min-height:16px;margin:4px 0}
+
+  /* dialogue */
+  #dlg{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(640px,94vw);z-index:12;box-sizing:border-box;
+    background:rgba(18,15,32,.96);border:2px solid #b8893a;border-radius:8px;padding:12px 14px;cursor:pointer}
+  #dWho{color:#ffd27a;font-size:12px;margin-bottom:6px}
+  #dTxt{font-size:13px;line-height:1.6;min-height:42px}
+  #dHint{text-align:right;color:#9d96b5;font-size:10px;margin-top:6px}
+
+  /* result */
+  #over{background:rgba(7,6,13,.9);z-index:11;gap:10px}
+  #overTxt{color:#ffd27a;font-size:15px;text-align:center;margin-bottom:6px}
 
   #status{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;background:rgba(28,25,48,.96);border:2px solid #b8893a;
     padding:10px 16px;border-radius:6px;font-size:12px}
@@ -66,7 +116,15 @@
 <div id="hud">
   <div class="hp"><i id="hpFill"></i><span id="hpTxt"></span></div>
   <div class="info">WAVE <span id="wave">0</span> &nbsp;·&nbsp; KILLS <span id="kills">0</span></div>
+  <div id="chName"></div>
 </div>
+
+<div id="boss" hidden>
+  <div id="bossName"></div>
+  <div class="bb"><i id="bossFill"></i></div>
+</div>
+
+<div id="toast" hidden></div>
 
 <div id="skills"></div>
 
@@ -74,19 +132,77 @@
   <button data-pad="left" aria-label="Move left">◀</button>
   <button data-pad="right" aria-label="Move right">▶</button>
 </div>
-<div id="jumpWrap"><button data-pad="jump" aria-label="Jump">JUMP</button></div>
-
-<div id="select">
-  <h1>LANTERNFALL</h1>
-  <p class="sub">Choose your lantern-bearer</p>
-  <div id="cards"></div>
-  <div class="help">Keyboard: ← → or A D move · Space jump · 1 2 3 skills<br>iPad: use the on-screen buttons</div>
+<div id="actWrap">
+  <button data-pad="jump" aria-label="Jump">JUMP</button>
+  <button class="atk" data-pad="atk" aria-label="Attack">ATK</button>
 </div>
 
-<div id="over" hidden>
-  <h1>YOU FELL</h1>
+<!-- main menu -->
+<div id="menu" class="screen">
+  <h1>LANTERNFALL</h1>
+  <p class="sub">Shards: <span id="mShards">0</span> &nbsp;·&nbsp; <span id="mProg"></span></p>
+  <div class="col">
+    <button class="btn" id="btnStory">STORY MODE</button>
+    <button class="btn" id="btnEndless">ENDLESS</button>
+    <button class="btn" id="btnForge">LANTERN FORGE</button>
+  </div>
+  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 skills<br>iPad: on-screen buttons. Progress is saved in this browser only.</div>
+</div>
+
+<!-- story: chapter list -->
+<div id="chapters" class="screen" hidden>
+  <h1>STORY</h1>
+  <p class="sub">Choose a chapter</p>
+  <div id="chList"></div>
+  <button class="btn small" id="chBack">BACK</button>
+</div>
+
+<!-- class select -->
+<div id="select" class="screen" hidden>
+  <h1>LANTERNFALL</h1>
+  <p class="sub" id="selSub">Choose your lantern-bearer</p>
+  <div id="cards"></div>
+  <p class="sub" id="selGear"></p>
+  <button class="btn small" id="selBack">BACK</button>
+</div>
+
+<!-- the Lantern Forge (gacha) -->
+<div id="forge" class="screen" hidden>
+  <h2>LANTERN FORGE</h2>
+  <p class="sub">Shards: <b id="fShards">0</b> &nbsp;·&nbsp; <span id="fCount"></span></p>
+  <div class="fbox">
+    <b>Odds:</b> <span id="fOdds"></span><br>
+    <span id="fPity"></span><br>
+    Shards are earned by playing. There is no real money in this game.
+  </div>
+  <div class="row">
+    <button class="btn" id="pull1">PULL ×1</button>
+    <button class="btn" id="pull10">PULL ×10</button>
+  </div>
+  <div id="fMsg"></div>
+  <div class="grid" id="fResults"></div>
+  <div class="fbox"><b>Equipped:</b> <span id="fEquip"></span></div>
+  <div class="grid" id="fInv"></div>
+  <button class="btn small" id="fBack">BACK</button>
+  <div style="height:24px"></div>
+</div>
+
+<!-- story dialogue -->
+<div id="dlg" hidden>
+  <div id="dWho"></div>
+  <div id="dTxt"></div>
+  <div id="dHint"></div>
+</div>
+
+<!-- game over / chapter cleared -->
+<div id="over" class="screen" hidden>
+  <h1 id="overTitle">YOU FELL</h1>
   <div id="overTxt"></div>
-  <button id="retry">PLAY AGAIN</button>
+  <div class="row">
+    <button class="btn" id="retry">TRY AGAIN</button>
+    <button class="btn" id="nextCh" hidden>NEXT CHAPTER</button>
+    <button class="btn" id="toMenu">MENU</button>
+  </div>
 </div>
 
 <div id="status" hidden></div>
