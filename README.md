@@ -1,28 +1,59 @@
 # lanternfall
 
-A test page for the [pixelfx](https://github.com/patch-gg/pixelfx) fire effects, loaded as ES modules.
+A small browser game built on [pixelfx](https://github.com/patch-gg/pixelfx) pixel-art effects, loaded as ES modules
+and hosted on GitHub Pages. There are two pages:
+
+| Page | What it is |
+|---|---|
+| `game.html` | The playable game: five classes, waves of enemies, real pixelfx skills. |
+| `index.html` | A viewer for the fire effects (campfire, brazier, torch, candle, and more). |
+
+## Play
+
+Turn on GitHub Pages: Settings, Pages, Deploy from a branch, `main`, `/ (root)`. Then open
+`https://mv6tb7pk95-jpg.github.io/lanternfall/game.html`.
+
+The game needs an internet connection, because it loads pixelfx from jsDelivr (see below).
+
+### Controls
+
+| Action | Keyboard | iPad / touch |
+|---|---|---|
+| Move | Left / Right arrows, or A / D | On-screen ◀ ▶ |
+| Jump | Space, Up arrow, or W | On-screen JUMP |
+| Skills | 1, 2, 3 | Skill buttons at the bottom |
+
+### Classes
+
+Warden, Emberist, Skulker, Arbalist and Lightkeeper. Each skill is a real pixelfx move (wind-up, effect, hit-freeze,
+screen shake, recovery). Enemies come in waves: slimes first, ghosts from wave 2, bats from wave 4. You recover 25% of
+your health between waves.
 
 ## Structure
 
 ```
-index.html            page; loads src/main.js and shows any error on screen
-src/main.js           our code: draws campfire, brazier, torch and candle
-src/core/             pixelfx core (copied; index.js is trimmed, see below)
-src/fx/fire/          pixelfx fire effects (copied): _lib, campfire, brazier, torch, candle
+game.html             game page; shows any load error in a red box
+index.html            fire effect viewer
+src/game/px.js        imports the real pixelfx from jsDelivr (pinned commit) and provides loadFx()
+src/game/world.js     map: backdrops, walls, torches, braziers, campfire
+src/game/entities.js  hero, enemies (slime, ghost, bat), movement
+src/game/skills.js    classes and skills (pixelfx moves played with createAct)
+src/game/main.js      game loop, input, waves, HUD
+src/main.js           the fire viewer's code
+src/core/             copied pixelfx core, used by the fire viewer (index.js is trimmed)
+src/fx/fire/          copied pixelfx fire effects, used by the fire viewer
 .nojekyll             stops GitHub Pages from skipping files that start with "_"
 LICENSE-pixelfx.txt   pixelfx license
 ```
 
-`src/core/index.js` is trimmed from upstream: the exports for `scene`, `act`, `rig`, `poses` and `chain` are removed
-because those files are not copied here yet. Add them back when they are.
+The game does not use `src/core/` or `src/fx/`. It imports pixelfx straight from
+`https://cdn.jsdelivr.net/gh/patch-gg/pixelfx@a841596/`, so every effect in the library is available and the code is
+exactly the upstream code. To update pixelfx, change the commit in `src/game/px.js`.
 
-## View it
+## Run locally
 
-Turn on GitHub Pages: Settings, Pages, Deploy from a branch, `main`, `/ (root)`. Then open
-`https://mv6tb7pk95-jpg.github.io/lanternfall/`.
-
-ES modules do not load from `file://`, so opening `index.html` straight from a folder will not work. To test on a
-computer, run a local server from this folder, for example `python3 -m http.server`, and open `http://localhost:8000`.
+ES modules do not load from `file://`. From this folder run a local server, for example `python3 -m http.server`, and
+open `http://localhost:8000/game.html`.
 
 ## Credits
 
