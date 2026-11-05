@@ -1,6 +1,7 @@
 // pixelfx core: everything an effect imports comes from here.
-// NOTE (lanternfall): trimmed from upstream. The exports for scene.js, act.js, rig.js, poses.js and chain.js
-// are removed because those files are not copied into this repo yet. Add them back when they are.
+// NOTE (lanternfall): trimmed from upstream. The exports for scene.js, act.js, rig.js and chain.js
+// are removed because those files are not copied into this repo yet. poses.js is copied (fire-ring needs READY).
+// Add the other exports back when their files are copied.
 
 export * from "./math.js";
 export * from "./color.js";
@@ -11,3 +12,4 @@ export { Painter } from "./painter.js";
 export { FONTS, textWidth } from "./font.js";
 export { createFrame, clearFrame, createFx, composite, painterFor, resolveOptions } from "./fx.js";
 export { stockActor, drawActor, actorAlphaOf, HERO, HERO2, HERO_PAL, DUMMY_PAL } from "./actor.js";
+export { READY } from "./poses.js";
