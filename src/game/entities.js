@@ -1,14 +1,18 @@
 // Lanternfall: the player and the enemies.
 // The hero is pixelfx's own skeleton character, drawn with posed() (the same call createAct uses for skills).
-// The enemies are the real pixelfx critter effects (slime, ghost, bat) moved around by changing their x.
+// The enemies are the real pixelfx critter effects (slime, ghost, bat, snake, wisp) moved around by changing their x.
+// A boss is an ordinary critter recoloured with a pixelfx palette and given much more health.
 import { STAND, READY, posed, createFx, hex, pxRect, pxShadow } from "./px.js";
-import { GY, WORLD_W } from "./world.js";
+import { GY, WORLD_W, tintOpts } from "./world.js";
+import { attackPose } from "./attacks.js";
 
 export const SPEED = 70; // px per second
 
 // ---------------------------------------------------------------- player
-export function createPlayer(cls) {
-  return { cls, x: 110, y: 0, vy: 0, face: 1, hp: cls.hp, maxHp: cls.hp, walk: 0, moving: false, hurt: 0, locked: false, t: 0 };
+/** st: the gear bonuses from gacha.js statsOf() (fractions: 0.1 = 10%). */
+export function createPlayer(cls, st = {}) {
+  const maxHp = Math.round(cls.hp * (1 + (st.hp || 0)));
+  return { cls, x: 110, y: 0, vy: 0, face: 1, hp: maxHp, maxHp, walk: 0, moving: false, hurt: 0, locked: false, t: 0, spd: 1 + (st.spd || 0), atk: null };
 }
 
 /** inp: { left, right, jump }. While locked (a skill is playing) the body belongs to the act. */
@@ -19,8 +23,8 @@ export function updatePlayer(p, dt, inp) {
   if (!p.locked) {
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (dir) {
-      p.face = dir;
-      p.x = Math.max(12, Math.min(WORLD_W - 12, p.x + dir * SPEED * dt));
+      if (!p.atk) p.face = dir; // he keeps facing the way he swings
+      p.x = Math.max(12, Math.min(WORLD_W - 12, p.x + dir * SPEED * p.spd * (p.atk ? 0.5 : 1) * dt));
       p.walk += dt;
       p.moving = true;
     }
@@ -39,6 +43,7 @@ export function updatePlayer(p, dt, inp) {
 // Poses are pixelfx rig poses: hands (fx, fy / bx, by) and feet (ffx, ffy / fbx, fby), y negative is up.
 // The walk is held on 12 fps steps like pixelfx's own acts. These numbers are my own tuning.
 function poseOf(p) {
+  if (p.atk) return attackPose(p.atk.pose, p.atk.t); // the basic attack's swing (attacks.js)
   if (p.y < -1) return { ...STAND, lean: 1, fx: -6, fy: -23, bx: 6, by: -21, ffx: 4, ffy: -10, fbx: -4, fby: -5 };
   if (p.moving) {
     const ph = (Math.floor(p.walk * 12) / 12) * 2.8 * Math.PI * 2, s = Math.sin(ph), c = Math.cos(ph);
@@ -69,26 +74,44 @@ export function drawPlayer(f, p) {
 }
 
 // ---------------------------------------------------------------- enemies
-// h: how tall it stands (for its health bar); fly: how high above the floor its centre floats
+// h      how tall it stands (for its health bar)
+// fly    how high above the floor its centre floats
+// hy     the height a hit spark appears at
+// half   half of its width: attacks reach it when they touch this far around its centre
+// reach  how close it must be to the hero to hurt him; stop: how close it walks before it stops
+// opts   extra pixelfx options for the effect (the wisp needs a hover height)
+// The snake is about 78 px long with its head 30 px ahead of its centre, so it has a wide reach.
 export const TYPES = {
-  slime: { hp: 55, speed: 16, dmg: 8, h: 26, fly: 0 },
-  ghost: { hp: 40, speed: 24, dmg: 9, h: 44, fly: 0 },
-  bat: { hp: 28, speed: 44, dmg: 7, h: 18, fly: 46 },
+  slime: { hp: 55, speed: 16, dmg: 8, h: 26, fly: 0, hy: 12, half: 10, reach: 13, stop: 12 },
+  ghost: { hp: 40, speed: 24, dmg: 9, h: 44, fly: 0, hy: 26, half: 10, reach: 13, stop: 12 },
+  bat: { hp: 28, speed: 44, dmg: 7, h: 18, fly: 46, hy: 46, half: 8, reach: 13, stop: 12 },
+  snake: { hp: 70, speed: 20, dmg: 10, h: 18, fly: 0, hy: 8, half: 24, reach: 32, stop: 28 },
+  wisp: { hp: 45, speed: 30, dmg: 10, h: 74, fly: 0, hy: 36, half: 22, reach: 26, stop: 14, opts: { hover: 30 } },
 };
 
 let uid = 1;
 
-export function spawnEnemy(type, mod, x) {
+/**
+ * opt.scale  { hp, dmg } multipliers (a chapter's difficulty)
+ * opt.tint   a pixelfx palette name or "#hex" that recolours it
+ * opt.boss   a boss definition from story.js ({ name, hp, dmg, speed, tint }): it uses those numbers instead
+ */
+export function spawnEnemy(type, mod, x, opt = {}) {
   const T = TYPES[type], seed = ((uid++ * 7) % 97) + 1; // a different phase for every one
-  const fx = createFx(mod, { x: Math.round(x), y: GY - T.fly, seed });
-  return { type, T, fx, x, hp: T.hp, maxHp: T.hp, hitCd: 0.6, show: 0, kb: 0 };
+  const sc = opt.scale || { hp: 1, dmg: 1 }, B = opt.boss || null;
+  const fx = createFx(mod, { x: Math.round(x), y: GY - T.fly, seed, ...(T.opts || {}), ...tintOpts(mod, B ? B.tint : opt.tint) });
+  const maxHp = B ? B.hp : Math.round(T.hp * sc.hp);
+  return {
+    type, T, fx, x, hp: maxHp, maxHp, dmg: B ? B.dmg : Math.round(T.dmg * sc.dmg), speed: B ? B.speed : T.speed,
+    hitCd: 0.6, show: 0, kb: 0, boss: !!B, name: B ? B.name : type, dead: false,
+  };
 }
 
 export function updateEnemy(e, dt, player) {
   const dx = player.x - e.x, dir = dx < 0 ? -1 : 1;
   e.show = Math.max(0, e.show - dt);
   e.hitCd = Math.max(0, e.hitCd - dt);
-  const move = Math.abs(dx) > 12 ? dir * e.T.speed : 0;
+  const move = Math.abs(dx) > e.T.stop ? dir * e.speed : 0;
   e.x = Math.max(8, Math.min(WORLD_W - 8, e.x + (move + e.kb) * dt));
   e.kb *= Math.pow(0.02, dt);
   // the effect draws itself where its options say
@@ -97,13 +120,13 @@ export function updateEnemy(e, dt, player) {
   e.fx.update(dt);
 }
 
-export const touching = (e, p) => Math.abs(e.x - p.x) < 13;
+export const touching = (e, p) => Math.abs(e.x - p.x) < e.T.reach;
 
 const BAR_EDGE = hex("#150f1a"), BAR_BACK = hex("#5a1a1a"), BAR_FILL = hex("#e0443a");
 
 export function drawEnemy(f, e) {
   e.fx.draw(f);
-  if (e.show > 0) {
+  if (e.show > 0 && !e.boss) { // a boss shows its health in the bar at the top of the screen
     const w = 16, x = Math.round(e.x) - 8, y = GY - e.T.fly - e.T.h - 6;
     pxRect(f, x - 1, y - 1, w + 2, 4, BAR_EDGE);
     pxRect(f, x, y, w, 2, BAR_BACK);
