@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#07060d">
 <title>Lanternfall</title>
 <link rel="stylesheet" href="game.css">
+<link rel="stylesheet" href="loadout.css">
 </head>
 <body>
 
@@ -48,9 +49,10 @@
   <div class="col">
     <button class="btn" id="btnStory">STORY MODE</button>
     <button class="btn" id="btnEndless">ENDLESS</button>
+    <button class="btn" id="btnLoadout">LOADOUT</button>
     <button class="btn" id="btnForge">LANTERN FORGE</button>
   </div>
-  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 skills<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
+  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 4 skills<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
 </div>
 
 <!-- story: chapter list -->
@@ -88,6 +90,18 @@
   <div class="fbox"><b>Equipped:</b> <span id="fEquip"></span></div>
   <div class="grid" id="fInv"></div>
   <button class="btn small" id="fBack">BACK</button>
+  <div style="height:24px"></div>
+</div>
+
+<!-- skill loadout: pick up to 4 skills per class (starter skills and the books you pulled in the Forge) -->
+<div id="loadout" class="screen" hidden>
+  <h2>LOADOUT</h2>
+  <p class="sub">Choose the skills each class takes into a run</p>
+  <div id="lTabs"></div>
+  <div id="lSlots"></div>
+  <div id="lMsg"></div>
+  <div class="grid" id="lPool"></div>
+  <button class="btn small" id="lBack">BACK</button>
   <div style="height:24px"></div>
 </div>
 
