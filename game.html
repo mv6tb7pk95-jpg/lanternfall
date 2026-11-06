@@ -3,138 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#07060d">
 <title>Lanternfall</title>
-<style>
-  [hidden]{display:none!important}
-  html,body{margin:0;height:100%;background:#07060d;color:#f4ecd8;font-family:ui-monospace,Menlo,Consolas,monospace;overflow:hidden;
-    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;overscroll-behavior:none}
-  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
-  #view{display:block;image-rendering:pixelated;image-rendering:crisp-edges;background:#000}
-
-  /* HUD */
-  #hud{position:fixed;left:max(10px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));z-index:5;pointer-events:none;width:210px}
-  .hp{height:16px;background:#000;border:2px solid #b8893a;position:relative}
-  .hp i{position:absolute;left:0;top:0;bottom:0;width:100%;background:linear-gradient(#f06a6a,#b5302f)}
-  .hp span{position:absolute;inset:0;text-align:center;line-height:16px;font-size:10px;font-weight:700;text-shadow:1px 1px 0 #000}
-  .info{margin-top:6px;font-size:11px;text-shadow:1px 1px 0 #000;color:#ffd27a}
-  #chName{margin-top:2px;font-size:10px;color:#9d96b5;text-shadow:1px 1px 0 #000}
-
-  /* boss bar */
-  #boss{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:5;width:min(300px,40vw);pointer-events:none;text-align:center}
-  #bossName{font-size:11px;color:#ff9a8a;text-shadow:1px 1px 0 #000;margin-bottom:3px}
-  .bb{height:12px;background:#000;border:2px solid #b8893a;position:relative}
-  .bb i{position:absolute;left:0;top:0;bottom:0;width:100%;background:linear-gradient(#d42a30,#6a101c)}
-  @media(max-width:700px){#boss{top:72px}}
-
-  /* toast */
-  #toast{position:fixed;top:22%;left:50%;transform:translateX(-50%);z-index:8;background:rgba(28,25,48,.92);border:2px solid #b8893a;
-    padding:8px 16px;border-radius:6px;font-size:13px;color:#ffd27a;pointer-events:none;white-space:nowrap}
-
-  /* skill buttons */
-  #skills{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:5}
-  #skills button{position:relative;width:76px;height:64px;background:#1f1b33;border:2px solid #b8893a;border-radius:6px;color:#f4ecd8;
-    font:inherit;font-size:10px;box-shadow:0 3px 0 #000;overflow:hidden;touch-action:none;padding:0}
-  #skills button:active{transform:translateY(2px)}
-  #skills .key{position:absolute;top:3px;left:6px;color:#9d96b5;font-size:10px}
-  #skills .nm{position:absolute;left:2px;right:2px;bottom:6px;text-align:center;line-height:1.15}
-  #skills .cd{position:absolute;left:0;right:0;bottom:0;height:0;background:rgba(0,0,0,.65);pointer-events:none}
-
-  /* on-screen pad */
-  #pad{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));display:flex;gap:10px;z-index:5}
-  #pad button{width:62px;height:62px;border-radius:50%;background:rgba(28,25,48,.85);border:2px solid #b8893a;color:#f4ecd8;
-    font:inherit;font-size:12px;touch-action:none;padding:0}
-  #pad button:active{background:rgba(70,60,110,.9)}
-  #actWrap{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:5;display:flex;gap:12px;align-items:flex-end}
-  #actWrap button{width:66px;height:66px;border-radius:50%;background:rgba(28,25,48,.85);border:2px solid #b8893a;color:#f4ecd8;
-    font:inherit;font-size:12px;touch-action:none;padding:0}
-  #actWrap button.atk{width:80px;height:80px;border-color:#ffd27a;font-size:14px}
-  #actWrap button:active{background:rgba(70,60,110,.9)}
-
-  /* full-screen panels */
-  .screen{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:14px;box-sizing:border-box;background:radial-gradient(ellipse at center,#2a2642,#0b0912)}
-  h1{color:#ffd27a;font-size:28px;letter-spacing:4px;margin:0 0 6px;text-shadow:0 4px 0 #3a2a10;text-align:center}
-  h2{color:#ffd27a;font-size:16px;margin:0 0 6px;text-align:center}
-  .sub{color:#9d96b5;font-size:12px;margin:0 0 14px;text-align:center}
-  .btn{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;font-size:14px;padding:12px 22px;
-    box-shadow:0 4px 0 #000;touch-action:manipulation;min-width:220px}
-  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
-  .btn:disabled{opacity:.45}
-  .btn.small{min-width:0;font-size:12px;padding:8px 14px}
-  .col{display:flex;flex-direction:column;gap:12px;align-items:center}
-  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-  .help{margin-top:14px;color:#7d7796;font-size:10px;text-align:center;line-height:1.6}
-
-  #cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;width:100%;max-width:920px;margin-bottom:12px}
-  .card{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;padding:14px 8px;box-shadow:0 4px 0 #000;text-align:center;touch-action:manipulation}
-  .card:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
-  .card b{display:block;color:#ffd27a;font-size:13px;margin-bottom:6px}
-  .card small{display:block;color:#9d96b5;font-size:10px;line-height:1.5;margin-top:3px}
-  @media(max-width:760px){#cards{grid-template-columns:repeat(2,1fr)}}
-
-  #chList{display:flex;flex-direction:column;gap:10px;width:min(520px,92vw);margin-bottom:14px}
-  .chap{background:#1f1b33;border:2px solid #b8893a;border-radius:8px;color:#f4ecd8;font:inherit;padding:12px;text-align:left;box-shadow:0 4px 0 #000;touch-action:manipulation}
-  .chap b{display:block;color:#ffd27a;font-size:14px;margin-bottom:4px}
-  .chap small{display:block;color:#9d96b5;font-size:11px;line-height:1.5}
-  .chap:disabled{opacity:.5}
-
-  /* forge */
-  #forge{justify-content:flex-start;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
-  #forge>*{flex-shrink:0}
-  .fbox{width:100%;max-width:900px;box-sizing:border-box;background:rgba(31,27,51,.8);border:2px solid #b8893a;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;line-height:1.6;color:#cfc8e6}
-  .fbox b{color:#ffd27a}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;width:100%;max-width:900px;margin-bottom:12px}
-  .item{background:#1f1b33;border:2px solid #555;border-radius:8px;padding:8px;text-align:left}
-  .item b{display:block;font-size:12px}
-  .item small{display:block;color:#9d96b5;font-size:10px;line-height:1.45;margin-top:2px}
-  .item small.note{color:#7d7796;font-style:italic}
-  .item small.tag{color:#ffd27a;font-weight:700}
-  .item .eq{margin-top:6px;width:100%;background:#2b2646;border:2px solid #b8893a;border-radius:6px;color:#f4ecd8;font:inherit;font-size:10px;padding:6px;touch-action:manipulation}
-  #fMsg{color:#ff9a8a;font-size:12px;min-height:16px;margin:4px 0}
-
-  /* dialogue */
-  #dlg{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(640px,94vw);z-index:12;box-sizing:border-box;
-    background:rgba(18,15,32,.96);border:2px solid #b8893a;border-radius:8px;padding:12px 14px;cursor:pointer}
-  #dWho{color:#ffd27a;font-size:12px;margin-bottom:6px}
-  #dTxt{font-size:13px;line-height:1.6;min-height:42px}
-  #dHint{text-align:right;color:#9d96b5;font-size:10px;margin-top:6px}
-
-  /* result */
-  #over{background:rgba(7,6,13,.9);z-index:11;gap:10px}
-  #overTxt{color:#ffd27a;font-size:15px;text-align:center;margin-bottom:6px}
-
-  #status{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;background:rgba(28,25,48,.96);border:2px solid #b8893a;
-    padding:10px 16px;border-radius:6px;font-size:12px}
-  #err{position:fixed;left:8px;right:8px;top:8px;z-index:99;background:#5a0f14;color:#fff;border:2px solid #ff6a6a;border-radius:6px;
-    padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;user-select:text;-webkit-user-select:text;touch-action:auto}
-</style>
+<link rel="stylesheet" href="game.css">
 </head>
 <body>
 
-<div id="stage"><canvas id="view"></canvas></div>
+<!-- the game view: the canvas and everything drawn over it share one box, so they always line up -->
+<div id="stage">
+  <canvas id="view"></canvas>
 
-<div id="hud">
-  <div class="hp"><i id="hpFill"></i><span id="hpTxt"></span></div>
-  <div class="info">WAVE <span id="wave">0</span> &nbsp;·&nbsp; KILLS <span id="kills">0</span></div>
-  <div id="chName"></div>
+  <div id="hud">
+    <div class="hp"><i id="hpFill"></i><span id="hpTxt"></span></div>
+    <div class="info">WAVE <span id="wave">0</span> &nbsp;·&nbsp; KILLS <span id="kills">0</span></div>
+    <div id="chName"></div>
+  </div>
+
+  <div id="boss" hidden>
+    <div id="bossName"></div>
+    <div class="bb"><i id="bossFill"></i></div>
+  </div>
+
+  <div id="toast" hidden></div>
 </div>
 
-<div id="boss" hidden>
-  <div id="bossName"></div>
-  <div class="bb"><i id="bossFill"></i></div>
-</div>
+<div id="rot">Turn your device sideways for a bigger view</div>
 
-<div id="toast" hidden></div>
+<!-- left thumb (touch screens): drag sideways to walk, push up to jump -->
+<div id="stick" aria-label="Move stick"><div id="knob"></div></div>
 
-<div id="skills"></div>
-
-<div id="pad">
-  <button data-pad="left" aria-label="Move left">◀</button>
-  <button data-pad="right" aria-label="Move right">▶</button>
-</div>
-<div id="actWrap">
-  <button data-pad="jump" aria-label="Jump">JUMP</button>
-  <button class="atk" data-pad="atk" aria-label="Attack">ATK</button>
+<!-- right thumb: skill buttons on top; Jump and Attack below (the Jump and Attack buttons show on touch screens only) -->
+<div id="acts">
+  <div id="skills"></div>
+  <div id="row">
+    <button class="jump" data-pad="jump" aria-label="Jump">JUMP</button>
+    <button class="atk" data-pad="atk" aria-label="Attack">ATK</button>
+  </div>
 </div>
 
 <!-- main menu -->
@@ -146,7 +50,7 @@
     <button class="btn" id="btnEndless">ENDLESS</button>
     <button class="btn" id="btnForge">LANTERN FORGE</button>
   </div>
-  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 skills<br>iPad: on-screen buttons. Progress is saved in this browser only.</div>
+  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 skills<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
 </div>
 
 <!-- story: chapter list -->
