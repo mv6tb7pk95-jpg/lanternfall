@@ -1,9 +1,11 @@
 // Lanternfall: combat rules. ALL damage to enemies goes through rollDamage(), so the weapon bonus, the +-8% variance
 // and crits live in one place. Skills, the basic attack and the boss fight all call hurtEnemy().
+// Two kinds of skill: an act skill (a pixelfx move played by startSkill) and a zone skill (one effect, see zoneskill.js).
 import { G, $ } from "./state.js";
 import { GY } from "./world.js";
 import { createFx } from "./px.js";
 import { startSkill } from "./skills.js";
+import { isZoneSkill, zoneCast, spawnZone, stepZone } from "./zoneskill.js";
 
 /** Start a pixelfx effect that the game owns (a hit spark, an explosion...). Capped so the page stays fast. */
 export function spawnFx(mod, o) {
@@ -58,6 +60,22 @@ export function zoneHit(run, h) {
   for (const e of G.enemies.slice()) if (e.x + e.T.half >= a && e.x - e.T.half <= b) hurtEnemy(e, run.skill.dmg, run.dir, h.push ?? 1.2);
 }
 
+// ---------------------------------------------------------------- zone skills (one effect, no act)
+/** One damage tick of a zone skill: everything standing in the area takes dmg x mul. */
+function zoneTick(z, mul) {
+  const s = z.skill, lo = z.x - s.half, hi = z.x + s.half;
+  for (const e of G.enemies.slice()) if (e.x + e.T.half >= lo && e.x - e.T.half <= hi) hurtEnemy(e, s.dmg * mul, z.dir, s.push ?? 0.3);
+}
+
+/** Called every frame by run.js (not while the world is frozen by a hit-stop). */
+export function updateZones(dt) {
+  for (let i = G.zones.length - 1; i >= 0; i--) {
+    const z = G.zones[i];
+    stepZone(z, dt, zoneTick);
+    if (z.fx.done() || z.t > 8) G.zones.splice(i, 1); // 8 s is only a safety net
+  }
+}
+
 /** The skills the player can cast right now: the equipped loadout (G.skills, set by run.js), or the class's own skills. */
 export function activeSkills() {
   return G.skills || (G.cls ? G.cls.skills : []);
@@ -66,7 +84,16 @@ export function activeSkills() {
 export function cast(i) {
   if (G.state !== "play") return;
   const p = G.player, s = activeSkills()[i];
-  if (!s || p.locked || p.y < -0.5 || G.cds[i] > 0 || G.runs.length >= 3) return;
+  if (!s || p.locked || p.y < -0.5 || G.cds[i] > 0) return;
+  if (isZoneSkill(s)) {
+    // he stays free to walk (at half speed) while the short cast pose plays; the effect runs on its own
+    if (!G.mods[s.id] || G.zones.length >= 3) return;
+    G.cds[i] = G.cdMax[i] = s.cd * (1 - G.st.cdr);
+    p.atk = zoneCast(s);
+    G.zones.push(spawnZone(G.mods[s.id], s, p));
+    return;
+  }
+  if (G.runs.length >= 3) return;
   G.cds[i] = G.cdMax[i] = s.cd * (1 - G.st.cdr);
   p.locked = true;
   p.atk = null;
