@@ -1,15 +1,33 @@
 // Lanternfall: combat rules. ALL damage to enemies goes through rollDamage(), so the weapon bonus, the +-8% variance
 // and crits live in one place. Skills, the basic attack and the boss fight all call hurtEnemy().
-// Two kinds of skill: an act skill (a pixelfx move played by startSkill) and a zone skill (one effect, see zoneskill.js).
+// Three kinds of skill:
+//   act skill         a pixelfx move played by startSkill; damage lands in a fixed zone at each real hit (zoneHit)
+//   projectile skill  an act skill whose projectile is followed frame by frame and hurts the first enemy it touches
+//                     (arrow, pistol, rocket, fireball, ice lance; the flight data is in projectile.js)
+//   zone skill        one effect with no act (see zoneskill.js)
 import { G, $ } from "./state.js";
 import { GY } from "./world.js";
 import { createFx } from "./px.js";
 import { startSkill } from "./skills.js";
 import { isZoneSkill, zoneCast, spawnZone, stepZone } from "./zoneskill.js";
+import { prepared, attachFlights } from "./projectile.js";
 
 /** Start a pixelfx effect that the game owns (a hit spark, an explosion...). Capped so the page stays fast. */
 export function spawnFx(mod, o) {
   if (mod && G.fxs.length < 40) G.fxs.push(createFx(mod, o));
+}
+
+/** The whole world holds still for a moment (run.js counts it down). The longest request wins. */
+export function hitStop(sec) {
+  G.hitStop = Math.max(G.hitStop || 0, sec);
+}
+
+/** A short screen shake of `amp` px (run.js draws it). A stronger or longer one replaces a weaker one. */
+export function shake(sec, amp) {
+  if (sec > (G.shakeT || 0)) {
+    G.shakeT = G.shake0 = sec;
+    G.shakeAmp = amp;
+  }
 }
 
 /** base damage -> final damage: weapon bonus, +-8% variance, 5% base crit chance (plus gear) for x1.5. */
@@ -56,8 +74,66 @@ export function hurtPlayer(dmg, fromX) {
 
 // called by the pixelfx act at the exact moment of each real hit of a skill
 export function zoneHit(run, h) {
+  if (run.fl) return scriptedHit(run); // a projectile skill: see below
   const z = run.skill.zone, lo = run.x + run.dir * z[0], hi = run.x + run.dir * z[1], a = Math.min(lo, hi), b = Math.max(lo, hi);
   for (const e of G.enemies.slice()) if (e.x + e.T.half >= a && e.x - e.T.half <= b) hurtEnemy(e, run.skill.dmg, run.dir, h.push ?? 1.2);
+}
+
+// ---------------------------------------------------------------- projectile skills
+// The projectile's tip is followed from the hero out to where the move would land. The first enemy it touches is hurt
+// at once, a blast also hurts what stands around the spot, the move's own picture of the projectile is hidden from then
+// on, and the world holds still for a beat. If it touches nothing, it lands where the move shows it (a blast still
+// hurts what stands around that spot). Enemies are matched on the ground line only, like the rest of the game.
+const PAD = 4; // px added to an enemy's half-width, so a fast projectile can't slip between two frames
+
+function impact(run, f, target, ix, atEnd) {
+  const F = run.fl.cfg, h = run.fl.orig[f.i] || {}, s = run.skill;
+  f.done = true;
+  const victims = new Set(target ? [target] : []);
+  if (F.splash) for (const e of G.enemies) if (Math.abs(e.x - ix) <= F.splash + e.T.half) victims.add(e);
+  for (const e of victims) hurtEnemy(e, s.dmg, run.dir, h.push ?? 1.2);
+  if (!atEnd) {
+    // stopped early: the rest of the move's picture (the projectile still flying, its landing effect) is hidden
+    const next = run.fl.list[f.i + 1];
+    run.fl.cuts.push([run.act.t, next ? next.t0 : Infinity]);
+    if (F.boom) spawnFx(G.M["small-explosion"], { x: Math.round(ix), y: GY, size: F.boom, seed: 3 + (G.sparkN++ % 7) });
+  }
+  if (victims.size) {
+    hitStop(h.stop ?? 0.06);
+    shake(h.shake ?? 0.1, h.amp ?? 2);
+  }
+}
+
+/** Move one flight to where the projectile is at move time t; the first enemy in that stretch takes the hit. */
+function sweep(run, f, t) {
+  if (f.done || t < f.t0) return;
+  const cur = f.at(Math.min(t, f.t1));
+  const start = run.x + run.dir * f.prev, end = run.x + run.dir * cur;
+  f.prev = cur;
+  const lo = Math.min(start, end) - PAD, hi = Math.max(start, end) + PAD;
+  let hit = null, best = Infinity;
+  for (const e of G.enemies) {
+    if (e.x + e.T.half < lo || e.x - e.T.half > hi) continue;
+    const d = Math.abs(e.x - start); // the nearest one along the path is the one it hits
+    if (d < best) {
+      best = d;
+      hit = e;
+    }
+  }
+  if (hit) impact(run, f, hit, hit.x, false);
+}
+
+/** Called every frame by run.js (not while the world is held still). */
+export function updateProjectiles() {
+  for (const r of G.runs) if (r.fl) for (const f of r.fl.list) sweep(r, f, r.act.t);
+}
+
+// the move's own landing time: whatever stretch is left is swept now; if still nothing was touched, it lands at the end
+function scriptedHit(run) {
+  const f = run.fl.list[run.fl.n++];
+  if (!f || f.done) return; // it already hit something on the way
+  sweep(run, f, f.t1);
+  if (!f.done) impact(run, f, null, run.x + run.dir * f.at(f.t1), true);
 }
 
 // ---------------------------------------------------------------- zone skills (one effect, no act)
@@ -97,5 +173,8 @@ export function cast(i) {
   G.cds[i] = G.cdMax[i] = s.cd * (1 - G.st.cdr);
   p.locked = true;
   p.atk = null;
-  G.runs.push(startSkill(G.mods[s.id], s, p, zoneHit));
+  const mod = G.mods[s.id];
+  const run = startSkill(prepared(mod, s.id), s, p, zoneHit); // a projectile skill plays a copy without its own freeze
+  attachFlights(run, mod, s.id); // no-op for skills that are not projectiles
+  G.runs.push(run);
 }
