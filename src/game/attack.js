@@ -1,8 +1,14 @@
 // Lanternfall: the basic attack. It needs no cooldown skill: hold J / K / Z or the ATK button to repeat it.
 // The data (which pixelfx effect, damage, timing) is in attacks.js. This file decides when it fires and who it hits.
+// A shot is checked along the whole stretch it flew this frame (not only where it ends up), so a fast shot can't skip
+// an enemy. On a hit the shot is removed, the world holds still for a beat, and the fireball bursts.
 import { G, inp } from "./state.js";
 import { BASIC, spawnSwing, spawnShot, moveShot, spawnMissile } from "./attacks.js";
-import { hurtEnemy } from "./combat.js";
+import { hurtEnemy, hitStop, shake, spawnFx } from "./combat.js";
+import { GY } from "./world.js";
+
+const PAD = 6; // px added to an enemy's half-width when a shot touches it
+const BOOM = { "fire/fireball": 0.35 }; // size of the burst when a shot of this effect hits (0 / missing = none)
 
 function nearest(x, maxD) {
   let best = null, bd = maxD;
@@ -45,7 +51,10 @@ function fire(p, a) {
     const lo = p.x + dir * b.zone[0], hi = p.x + dir * b.zone[1], x0 = Math.min(lo, hi), x1 = Math.max(lo, hi);
     for (const e of G.enemies.slice()) if (e.x + e.T.half >= x0 && e.x - e.T.half <= x1) hurtEnemy(e, b.dmg, dir, 0.9);
   } else if (b.kind === "shot") {
-    G.shots.push(spawnShot(mod, b, p.x, dir));
+    const s = spawnShot(mod, b, p.x, dir);
+    s.px = p.x; // the first sweep starts at the hero, so an enemy right in front of him is hit too
+    s.boom = BOOM[b.path] || 0;
+    G.shots.push(s);
   } else {
     const d = a.tx < p.x ? -1 : 1;
     G.missiles.push({ fx: spawnMissile(mod, b, p.x, d, Math.abs(a.tx - p.x)), tx: a.tx, t: 0, delay: b.delay, dmg: b.dmg, dir: d, hit: false });
@@ -65,13 +74,28 @@ export function updateAttack(dt) {
     }
     if (a.t >= a.b.dur) p.atk = null;
   }
-  // shots fly along the floor until they hit the first enemy or run out of range
+  // shots fly along the floor; the first enemy on the stretch they covered this frame takes the hit and the shot is gone
   for (let i = G.shots.length - 1; i >= 0; i--) {
     const s = G.shots[i];
+    const from = s.px ?? s.x;
     let alive = moveShot(s, dt);
-    const hit = G.enemies.find((e) => Math.abs(e.x - s.x) <= e.T.half + 6);
+    s.px = s.x;
+    const lo = Math.min(from, s.x) - PAD, hi = Math.max(from, s.x) + PAD;
+    let hit = null, best = Infinity;
+    for (const e of G.enemies) {
+      if (e.x + e.T.half < lo || e.x - e.T.half > hi) continue;
+      const d = Math.abs(e.x - from); // the nearest one along the path
+      if (d < best) {
+        best = d;
+        hit = e;
+      }
+    }
     if (hit) {
+      const hx = Math.round(hit.x);
       hurtEnemy(hit, s.dmg, s.dir, 1);
+      hitStop(0.04);
+      shake(0.08, 1);
+      if (s.boom) spawnFx(G.M["small-explosion"], { x: hx, y: GY, size: s.boom, seed: 3 + (G.sparkN++ % 7) });
       alive = false;
     }
     if (!alive) G.shots.splice(i, 1);
@@ -83,7 +107,17 @@ export function updateAttack(dt) {
     m.fx.update(dt);
     if (!m.hit && m.t >= m.delay) {
       m.hit = true;
-      for (const e of G.enemies.slice()) if (Math.abs(e.x - m.tx) <= e.T.half + 22) hurtEnemy(e, m.dmg, m.dir, 1);
+      let n = 0;
+      for (const e of G.enemies.slice()) {
+        if (Math.abs(e.x - m.tx) <= e.T.half + 22) {
+          hurtEnemy(e, m.dmg, m.dir, 1);
+          n++;
+        }
+      }
+      if (n) {
+        hitStop(0.05);
+        shake(0.08, 1);
+      }
     }
     if (m.fx.done() || m.t > 3) G.missiles.splice(i, 1);
   }
