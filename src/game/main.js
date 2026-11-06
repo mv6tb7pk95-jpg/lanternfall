@@ -1,5 +1,5 @@
 // Lanternfall: entry point. Wires the menus, loads the shared pixelfx effects, handles input and runs the loop.
-// The game itself lives in small files: state.js, ui.js, menu.js, run.js, combat.js, attack.js, waves.js, forge.js.
+// The game itself lives in small files: state.js, ui.js, menu.js, run.js, combat.js, attack.js, waves.js, forge.js, hub.js.
 // Screen layout is layout.js and the touch stick is controls.js. Every picture comes from the real pixelfx library (px.js).
 // It expects the elements defined in game.html.
 import { loadFx } from "./px.js";
@@ -26,6 +26,7 @@ G.booted.catch(fail);
 
 // ---------------------------------------------------------------- keyboard
 // Keys only act while a run is being played, so Space and Enter still work on the menu buttons and in dialogue.
+// (The keys of the hub are handled in hub.js.)
 const KEYS = { ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right" };
 const ATTACK = new Set(["j", "J", "k", "K", "z", "Z"]);
 
@@ -50,11 +51,13 @@ addEventListener("blur", () => {
 
 // ---------------------------------------------------------------- on-screen buttons (Jump and Attack; Attack repeats while held)
 // The touch stick for walking and jumping is in controls.js. Each button gets an "on" look while it is held.
+// In the hub only Jump works (Attack is hidden there).
 document.querySelectorAll("[data-pad]").forEach((b) => {
   const k = b.dataset.pad;
   const down = (ev) => {
     ev.preventDefault();
-    if (G.state !== "play") return;
+    const ok = G.state === "play" || (G.state === "hub" && k === "jump");
+    if (!ok) return;
     inp[k] = true; // jump is cleared by the game loop after one frame
     b.classList.add("on");
   };
