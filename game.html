@@ -7,6 +7,7 @@
 <title>Lanternfall</title>
 <link rel="stylesheet" href="game.css">
 <link rel="stylesheet" href="loadout.css">
+<link rel="stylesheet" href="hub.css">
 </head>
 <body>
 
@@ -30,6 +31,9 @@
 
 <div id="rot">Turn your device sideways for a bigger view</div>
 
+<!-- hub: "Enter <building>" button, shown when the hero stands at a building (hub.js) -->
+<button id="hubPrompt" hidden></button>
+
 <!-- left thumb (touch screens): drag sideways to walk, push up to jump -->
 <div id="stick" aria-label="Move stick"><div id="knob"></div></div>
 
@@ -47,12 +51,35 @@
   <h1>LANTERNFALL</h1>
   <p class="sub">Shards: <span id="mShards">0</span> &nbsp;·&nbsp; <span id="mProg"></span></p>
   <div class="col">
+    <button class="btn" id="btnHub">ENTER THE GATEHOUSE</button>
     <button class="btn" id="btnStory">STORY MODE</button>
     <button class="btn" id="btnEndless">ENDLESS</button>
     <button class="btn" id="btnLoadout">LOADOUT</button>
     <button class="btn" id="btnForge">LANTERN FORGE</button>
   </div>
-  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 4 skills<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
+  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 4 skills · E enter a building<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
+</div>
+
+<!-- the Dungeon Gate in the hub -->
+<div id="gate" class="screen" hidden>
+  <h1>DUNGEON GATE</h1>
+  <p class="sub">Where do you want to go?</p>
+  <div class="col">
+    <button class="btn" id="gStory">STORY MODE</button>
+    <button class="btn" id="gEndless">ENDLESS</button>
+  </div>
+  <button class="btn small" id="gBack">BACK TO THE SQUARE</button>
+</div>
+
+<!-- the Party Board in the hub: a placeholder until the multiplayer phase -->
+<div id="party" class="screen" hidden>
+  <h2>PARTY BOARD</h2>
+  <p class="sub">Co-op is not open yet</p>
+  <div class="fbox">
+    This board will list parties looking for members, so you can gather friends before a dungeon run.<br>
+    It needs an online room server, which is built in the last phase. Until then you play alone.
+  </div>
+  <button class="btn small" id="pBack">BACK TO THE SQUARE</button>
 </div>
 
 <!-- story: chapter list -->
