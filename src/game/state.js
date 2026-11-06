@@ -30,6 +30,7 @@ export const G = {
   player: null,
   world: null,
   enemies: [], runs: [], fxs: [], shots: [], missiles: [],
+  zones: [], // running zone skills (single-effect skills, see zoneskill.js)
   cds: [], cdMax: [], cdEls: [],
   mods: {}, // loaded pixelfx modules for the chosen class (skills by id, basic attack by path)
   M: {}, // shared pixelfx effects: slime ghost bat snake wisp hit-spark small-explosion
