@@ -3,7 +3,7 @@ import { $, G } from "./state.js";
 import { loadSave } from "./save.js";
 import { CHAPTERS } from "./story.js";
 
-const SCREENS = ["menu", "chapters", "select", "forge", "over"];
+const SCREENS = ["menu", "chapters", "select", "forge", "loadout", "over"];
 
 /** Show one full-screen panel and hide the others. show(null) hides all of them (the game is visible). */
 export function show(id) {
