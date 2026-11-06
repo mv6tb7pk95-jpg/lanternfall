@@ -2,6 +2,7 @@
 // beginRun() loads what a run needs and starts it. updateRun() and drawRun() are called every frame by main.js.
 // finish() pays the rewards, saves, plays the ending lines and shows the result screen.
 // The canvas size on screen is handled by layout.js (a whole-number zoom, set through CSS variables).
+// The skills of a run are the player's saved loadout (loadout.js): starters plus unlocked skill books, up to 4.
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
@@ -13,6 +14,7 @@ import { updateSpawns } from "./waves.js";
 import { show, dialogue } from "./ui.js";
 import { loadSave, writeSave } from "./save.js";
 import { statsOf } from "./gacha.js";
+import { getLoadout } from "./loadout.js";
 import { CHAPTERS } from "./story.js";
 import { getScale } from "./layout.js";
 import { $, G, inp, clamp, fail, setStatus } from "./state.js";
@@ -32,13 +34,15 @@ export async function beginRun(key, chapter) {
   if (G.loading) return;
   G.loading = true;
   const c = CLASSES[key], atk = BASIC[key];
+  const save = loadSave();
+  const skills = getLoadout(save, key); // the equipped skills, in slot order
   setStatus("Loading " + c.name + " from pixelfx…");
   const mods = {};
   let world;
   try {
     await G.booted; // the shared effects (enemies, hit spark, explosion) from main.js
     await Promise.all([
-      ...c.skills.map(async (s) => {
+      ...skills.map(async (s) => {
         mods[s.id] = await loadFx(s.path);
       }),
       loadFx(atk.path).then((m) => {
@@ -52,12 +56,12 @@ export async function beginRun(key, chapter) {
     return fail(e);
   }
 
-  const st = statsOf(loadSave());
+  const st = statsOf(save);
   Object.assign(G, {
-    state: chapter ? "dialogue" : "play", mode: chapter ? "story" : "endless", key, cls: c, chapter: chapter || null, st,
+    state: chapter ? "dialogue" : "play", mode: chapter ? "story" : "endless", key, cls: c, skills, chapter: chapter || null, st,
     player: createPlayer(c, st), world, mods,
     enemies: [], runs: [], fxs: [], shots: [], missiles: [],
-    cds: c.skills.map(() => 0), cdMax: c.skills.map(() => 0), cdEls: [],
+    cds: skills.map(() => 0), cdMax: skills.map(() => 0), cdEls: [],
     wave: 0, kills: 0, got: 0, time: 0, queue: [], gap: 1, cam: 0, sparkN: 0, atkCd: 0,
     boss: null, bossOut: false, bossDown: false, bossT: 0,
   });
@@ -71,7 +75,7 @@ export async function beginRun(key, chapter) {
   $("nextCh").hidden = true;
   const bar = $("skills");
   bar.innerHTML = "";
-  c.skills.forEach((s, i) => {
+  skills.forEach((s, i) => {
     const b = document.createElement("button");
     b.innerHTML = '<span class="key">' + (i + 1) + '</span><span class="nm">' + s.name + '</span><i class="cd"></i>';
     b.addEventListener("pointerdown", (ev) => {
