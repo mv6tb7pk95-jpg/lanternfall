@@ -1,5 +1,5 @@
 // Lanternfall: the menus. Main menu -> (Story: chapter list | Endless) -> class select -> beginRun() in run.js.
-// Also wires the Forge screen and the buttons on the result screen.
+// Also wires the Forge and Loadout screens and the buttons on the result screen.
 import { $, G, fail } from "./state.js";
 import { show, refreshMenu } from "./ui.js";
 import { CLASSES } from "./skills.js";
@@ -7,6 +7,7 @@ import { CHAPTERS } from "./story.js";
 import { loadSave } from "./save.js";
 import { itemById } from "./gacha.js";
 import { initForge, renderForge } from "./forge.js";
+import { initLoadout, renderLoadout } from "./loadout-ui.js";
 import { beginRun } from "./run.js";
 
 const pick = { chapter: null }; // what the class cards will start: a chapter, or null for endless
@@ -42,7 +43,7 @@ function openSelect(chapter) {
   pick.chapter = chapter;
   $("selSub").textContent = (chapter ? "Chapter " + chapter.id + ": " + chapter.name : "Endless") + " · choose your lantern-bearer";
   const s = loadSave(), w = itemById(s.eq.weapon), a = itemById(s.eq.acc);
-  $("selGear").textContent = "Gear: " + (w ? w.name : "no weapon") + " · " + (a ? a.name : "no accessory") + " (change it in the Lantern Forge)";
+  $("selGear").textContent = "Gear: " + (w ? w.name : "no weapon") + " · " + (a ? a.name : "no accessory") + " (change it in the Lantern Forge). Skills: change them in Loadout.";
   show("select");
 }
 
@@ -51,7 +52,7 @@ export function initMenu() {
   for (const [key, c] of Object.entries(CLASSES)) {
     const b = document.createElement("button");
     b.className = "card";
-    b.innerHTML = "<b>" + c.name + "</b><small>" + c.blurb + "</small><small>HP " + c.hp + " · " + c.skills.length + " skills + attack</small>";
+    b.innerHTML = "<b>" + c.name + "</b><small>" + c.blurb + "</small><small>HP " + c.hp + " · up to 4 skills + attack</small>";
     b.addEventListener("click", () => beginRun(key, pick.chapter).catch(fail));
     $("cards").append(b);
   }
@@ -62,6 +63,10 @@ export function initMenu() {
   $("btnForge").addEventListener("click", () => {
     renderForge();
     show("forge");
+  });
+  $("btnLoadout").addEventListener("click", () => {
+    renderLoadout();
+    show("loadout");
   });
 
   // back buttons
@@ -78,5 +83,6 @@ export function initMenu() {
   $("toMenu").addEventListener("click", goMenu);
 
   initForge();
+  initLoadout(goMenu);
   refreshMenu();
 }
