@@ -1,18 +1,26 @@
 // Lanternfall: the Lantern Forge screen. It only draws the screen and handles its buttons.
-// The rules live elsewhere: items, odds and costs in gacha.js, skill books and the pull itself in skillbook.js,
-// the saved data in save.js. A pull can now give weapons, accessories AND skill books (see pullForge in skillbook.js).
-// Skill books are equipped on the Loadout screen (loadout-ui.js), not here.
-// main/menu.js calls initForge() once and renderForge() every time the screen opens.
+// Two separate banners, each on its own tab:
+//   Equipment    weapons and accessories. Rules, odds and costs in gacha.js (pull()).
+//   Skill Books  skill books only. Rules, odds and costs in skillbook.js (pullBooks()).
+// The saved data is in save.js. Skill books are equipped on the Loadout screen (loadout-ui.js), not here.
+// menu.js calls initForge() once and renderForge() every time the screen opens.
+//
+// Elements it expects in game.html: fShards, fCount, fTabEq, fTabBk, the equipment panel (elements with class "fe":
+// fOdds, fPity, pull1, pull10, fMsg, fResults, fEquip, fInv) and the book panel (elements with class "fb":
+// bOdds, bPool, bPity, bPull1, bPull10, bMsg, bResults, bOwned), and fBack.
 import { loadSave, writeSave } from "./save.js";
-import { ITEMS, RARITY, COST, PITY, MAX_LV, describe, itemById, equip, unequip } from "./gacha.js";
-import { pullForge, bookShare, copiesOf, MAX_COPIES } from "./skillbook.js";
-import { BOOKS } from "./skillpool.js";
+import { ITEMS, RARITY, COST, PITY, MAX_LV, describe, itemById, equip, unequip, pull } from "./gacha.js";
+import { pullBooks, copiesOf, MAX_COPIES, BOOK_COST, BOOK_PITY, BOOK_RATES } from "./skillbook.js";
+import { BOOKS, booksByRarity } from "./skillpool.js";
 import { CLASSES } from "./skills.js";
 
 const $ = (id) => document.getElementById(id);
 const save = loadSave();
 const RANK = { legend: 0, epic: 1, rare: 2, common: 3 };
-let last = []; // the results of the latest pull
+const SHOW = ["common", "rare", "epic", "legend"]; // order of the odds text
+let tab = "eq"; // "eq" (equipment) or "bk" (skill books)
+let lastEq = []; // the results of the latest equipment pull
+let lastBk = []; // the results of the latest skill book pull
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -46,44 +54,27 @@ function bookCard(book, copies, tag) {
   d.append(
     n,
     el("small", "", r.name + " skill book · " + cn + (copies ? " · " + copies + "/" + MAX_COPIES + " copies" : "")),
-    el("small", "", "Cooldown " + book.cd + " s · damage " + book.dmg + " per hit")
+    el("small", "", "Cooldown " + book.cd + " s · damage " + book.dmg + (book.kind === "zone" ? " per tick" : " per hit"))
   );
   if (tag) d.append(el("small", "tag", tag));
   return d;
 }
 
-// The skill book collection sits above the BACK button. Built here so game.html needs no change.
-function booksBox() {
-  let box = $("fBooks");
-  if (!box) {
-    const back = $("fBack"), title = el("div", "fbox");
-    title.id = "fBooksTitle";
-    box = el("div", "grid");
-    box.id = "fBooks";
-    back.parentNode.insertBefore(title, back);
-    back.parentNode.insertBefore(box, back);
-  }
-  return box;
+// ---------- tabs ----------
+function showTab() {
+  for (const e of document.querySelectorAll("#forge .fe")) e.hidden = tab !== "eq";
+  for (const e of document.querySelectorAll("#forge .fb")) e.hidden = tab !== "bk";
+  $("fTabEq").classList.toggle("on", tab === "eq");
+  $("fTabBk").classList.toggle("on", tab === "bk");
 }
 
-function resultCard(r) {
-  if (r.kind === "book") {
-    const tag = r.isNew ? "NEW! Skill unlocked" : r.refund ? "Max copies: +" + r.refund + " shards" : "Extra copy (" + r.lv + "/" + MAX_COPIES + ")";
-    return bookCard(r.item, r.lv, tag);
-  }
-  return card(r.item, r.lv, r.isNew ? "NEW!" : r.refund ? "Max level: +" + r.refund + " shards" : "Level " + r.lv);
-}
-
-export function renderForge() {
-  $("fShards").textContent = save.shards;
-  $("fCount").textContent = "Items " + Object.keys(save.inv).length + "/" + ITEMS.length + " · Books " + BOOKS.filter((b) => copiesOf(save, b.id) > 0).length + "/" + BOOKS.length + " · Pulls " + save.pulls;
-  $("fOdds").textContent = Object.values(RARITY).map((r) => r.name + " " + r.rate + "%").join(" · ");
+// ---------- equipment banner ----------
+function renderEquipment() {
+  $("fOdds").textContent = SHOW.map((k) => RARITY[k].name + " " + RARITY[k].rate + "%").join(" · ");
   const left = PITY - save.pity;
-  const shares = Object.keys(RARITY).map((k) => { const s = bookShare(k); return RARITY[k].name + " " + s.books + " of " + s.total; }).join(" · ");
   $("fPity").textContent =
-    "Pity: a Legendary is guaranteed in " + left + " pull" + (left === 1 ? "" : "s") +
-    ". Each duplicate raises an item's level (max " + MAX_LV + "), then refunds shards. " +
-    "Skill books drop in the same pulls (books in each pool: " + shares + ").";
+    "Pity: a Legendary item is guaranteed in " + left + " pull" + (left === 1 ? "" : "s") +
+    ". A 10-pull has at least one Rare or better. Each duplicate raises an item's level (max " + MAX_LV + "), then refunds shards.";
   $("pull1").textContent = "PULL ×1 (" + COST.one + ")";
   $("pull10").textContent = "PULL ×10 (" + COST.ten + ")";
   $("pull1").disabled = save.shards < COST.one;
@@ -91,7 +82,7 @@ export function renderForge() {
 
   const res = $("fResults");
   res.innerHTML = "";
-  for (const r of last) res.append(resultCard(r));
+  for (const r of lastEq) res.append(card(r.item, r.lv, r.isNew ? "NEW!" : r.refund ? "Max level: +" + r.refund + " shards" : "Level " + r.lv));
 
   const w = itemById(save.eq.weapon), a = itemById(save.eq.acc);
   $("fEquip").textContent = "Weapon: " + (w ? w.name : "none") + " · Accessory: " + (a ? a.name : "none");
@@ -112,30 +103,95 @@ export function renderForge() {
     c.append(b);
     inv.append(c);
   }
-
-  // skill books you own (equip them from the Loadout screen)
-  const have = BOOKS.filter((b) => copiesOf(save, b.id) > 0).sort((x, y) => RANK[x.rarity] - RANK[y.rarity] || x.name.localeCompare(y.name));
-  $("fBooksTitle").innerHTML = "";
-  $("fBooksTitle").append(el("b", "", "Skill books: "), document.createTextNode(have.length + " of " + BOOKS.length + " unlocked. Equip them from the Loadout screen."));
-  const bb = booksBox();
-  bb.innerHTML = "";
-  for (const b of have) bb.append(bookCard(b, copiesOf(save, b.id)));
 }
 
-function doPull(n) {
-  const r = pullForge(save, n);
+// ---------- skill book banner ----------
+function renderBooks() {
+  $("bOdds").textContent = SHOW.map((k) => RARITY[k].name + " " + BOOK_RATES[k] + "%").join(" · ");
+
+  // what each rarity can drop, and the chance of each single book (the rarity's odds split between its books)
+  const pool = $("bPool");
+  pool.innerHTML = "";
+  for (const k of SHOW) {
+    const list = booksByRarity(k), line = el("div", "");
+    const name = el("b", "", RARITY[k].name + ": ");
+    name.style.color = RARITY[k].color;
+    const each = list.length ? " (each " + Math.round((BOOK_RATES[k] / list.length) * 10) / 10 + "%)" : "";
+    line.append(name, document.createTextNode(list.length ? list.map((b) => b.name).join(", ") + each : "no books yet"));
+    pool.append(line);
+  }
+
+  const left = BOOK_PITY - (save.bookPity | 0);
+  $("bPity").textContent =
+    "Pity: a Legendary book is guaranteed in " + left + " pull" + (left === 1 ? "" : "s") +
+    ". A 10-pull has at least one Rare or better. The first copy unlocks the skill. Extra copies count up to " + MAX_COPIES +
+    ", then refund shards. Equip books on the Loadout screen.";
+  $("bPull1").textContent = "PULL ×1 (" + BOOK_COST.one + ")";
+  $("bPull10").textContent = "PULL ×10 (" + BOOK_COST.ten + ")";
+  $("bPull1").disabled = save.shards < BOOK_COST.one;
+  $("bPull10").disabled = save.shards < BOOK_COST.ten;
+
+  const res = $("bResults");
+  res.innerHTML = "";
+  for (const r of lastBk) {
+    const tag = r.isNew ? "NEW! Skill unlocked" : r.refund ? "Max copies: +" + r.refund + " shards" : "Extra copy (" + r.lv + "/" + MAX_COPIES + ")";
+    res.append(bookCard(r.item, r.lv, tag));
+  }
+
+  // the whole collection: books you don't own yet are dimmed
+  const own = $("bOwned");
+  own.innerHTML = "";
+  const all = [...BOOKS].sort((x, y) => RANK[x.rarity] - RANK[y.rarity] || x.name.localeCompare(y.name));
+  for (const b of all) {
+    const n = copiesOf(save, b.id), c = bookCard(b, n, n ? "" : "Not found yet");
+    if (!n) c.style.opacity = "0.5";
+    own.append(c);
+  }
+}
+
+export function renderForge() {
+  const have = BOOKS.filter((b) => copiesOf(save, b.id) > 0).length;
+  $("fShards").textContent = save.shards;
+  $("fCount").textContent =
+    "Items " + Object.keys(save.inv).length + "/" + ITEMS.length +
+    " · Books " + have + "/" + BOOKS.length +
+    " · Pulls " + ((save.pulls | 0) + (save.bookPulls | 0));
+  $("fTabEq").textContent = "EQUIPMENT";
+  $("fTabBk").textContent = "SKILL BOOKS";
+  renderEquipment();
+  renderBooks();
+  showTab();
+}
+
+function pullEquipment(n) {
+  const r = pull(save, n);
   if (!r.ok) {
     $("fMsg").textContent = r.reason;
     return;
   }
   $("fMsg").textContent = "";
-  last = r.results;
+  lastEq = r.results;
+  writeSave();
+  renderForge();
+}
+
+function pullSkillBooks(n) {
+  const r = pullBooks(save, n);
+  if (!r.ok) {
+    $("bMsg").textContent = r.reason;
+    return;
+  }
+  $("bMsg").textContent = "";
+  lastBk = r.results;
   writeSave();
   renderForge();
 }
 
 export function initForge() {
-  booksBox(); // make sure the book section exists before the first render
-  $("pull1").addEventListener("click", () => doPull(1));
-  $("pull10").addEventListener("click", () => doPull(10));
+  $("fTabEq").addEventListener("click", () => { tab = "eq"; showTab(); });
+  $("fTabBk").addEventListener("click", () => { tab = "bk"; showTab(); });
+  $("pull1").addEventListener("click", () => pullEquipment(1));
+  $("pull10").addEventListener("click", () => pullEquipment(10));
+  $("bPull1").addEventListener("click", () => pullSkillBooks(1));
+  $("bPull10").addEventListener("click", () => pullSkillBooks(10));
 }
