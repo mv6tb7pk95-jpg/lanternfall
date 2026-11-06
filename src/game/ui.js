@@ -66,9 +66,9 @@ export function hud() {
   if (!p || !G.cls) return;
   $("hpFill").style.width = Math.max(0, (p.hp / p.maxHp) * 100) + "%";
   $("hpTxt").textContent = Math.ceil(Math.max(0, p.hp)) + " / " + p.maxHp;
-  G.cls.skills.forEach((s, i) => {
-    const el = G.cdEls[i];
-    if (el) el.style.height = (G.cdMax[i] ? (G.cds[i] / G.cdMax[i]) * 100 : 0) + "%";
+  // one cooldown overlay per skill button (run.js builds them from the equipped loadout, so this covers 1 to 4 skills)
+  G.cdEls.forEach((el, i) => {
+    el.style.height = (G.cdMax[i] ? (G.cds[i] / G.cdMax[i]) * 100 : 0) + "%";
   });
   const b = $("boss");
   if (G.boss && !G.bossDown) {
