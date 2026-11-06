@@ -1,0 +1,27 @@
+/* Lanternfall: the hub. hub.js adds body.hub while the hero walks the gatehouse square. */
+
+/* the run HUD does not belong in the hub */
+body.hub #hud, body.hub #boss { display: none; }
+
+/* controls in the hub: the stick and Jump only (no skills, no Attack) */
+body.hub #acts { display: flex; }
+body.hub #skills { display: none; }
+body.hub #row .atk { display: none; }
+body.hub #row .jump { margin-bottom: 0; width: calc(var(--u) * 1.5); height: calc(var(--u) * 1.5); }
+body.touch.hub #stick { display: block; }
+
+/* "Enter <building>": sits at the bottom centre of the canvas, clear of the stick (left) and Jump (right) */
+#hubPrompt {
+  position: fixed; z-index: 6; left: 50%;
+  top: calc(var(--top) + env(safe-area-inset-top, 0px) + var(--ch) - 58px);
+  transform: translateX(-50%);
+  min-height: 44px; box-sizing: border-box; padding: 10px 18px;
+  background: rgba(20, 17, 42, .93); border: 2px solid var(--amber); border-radius: 8px;
+  color: var(--amber); font: inherit; font-size: 13px; white-space: nowrap;
+  box-shadow: 0 3px 0 #000; touch-action: manipulation;
+}
+#hubPrompt:active { transform: translateX(-50%) translateY(2px); box-shadow: 0 1px 0 #000; }
+
+/* the gate and party screens */
+#gate .col { margin-bottom: 14px; }
+#party .fbox { text-align: center; }
