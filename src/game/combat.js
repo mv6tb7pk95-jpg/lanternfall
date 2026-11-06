@@ -58,9 +58,14 @@ export function zoneHit(run, h) {
   for (const e of G.enemies.slice()) if (e.x + e.T.half >= a && e.x - e.T.half <= b) hurtEnemy(e, run.skill.dmg, run.dir, h.push ?? 1.2);
 }
 
+/** The skills the player can cast right now: the equipped loadout (G.skills, set by run.js), or the class's own skills. */
+export function activeSkills() {
+  return G.skills || (G.cls ? G.cls.skills : []);
+}
+
 export function cast(i) {
   if (G.state !== "play") return;
-  const p = G.player, s = G.cls.skills[i];
+  const p = G.player, s = activeSkills()[i];
   if (!s || p.locked || p.y < -0.5 || G.cds[i] > 0 || G.runs.length >= 3) return;
   G.cds[i] = G.cdMax[i] = s.cd * (1 - G.st.cdr);
   p.locked = true;
