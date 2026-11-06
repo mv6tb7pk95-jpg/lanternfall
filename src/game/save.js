@@ -1,7 +1,7 @@
-// Lanternfall: persistent data. Everything the player keeps (shards, story progress, items, equipment, pity)
-// lives in this one plain object and is stored in this browser's localStorage. Nothing leaves the device.
-// Data only: the rules that change it live in gacha.js and main.js.
-const KEY = "lanternfall.save.v1";
+// Lanternfall: persistent data. Everything the player keeps (shards, story progress, items, equipment, pity,
+// skill books and skill loadouts) lives in this one plain object and is stored in this browser's localStorage.
+// Nothing leaves the device. Data only: the rules that change it live in gacha.js, loadout.js and the screens.
+const KEY = "lanternfall.save.v1"; // new fields are additive, so old saves still load
 
 const fresh = () => ({
   shards: 300, // a starting purse so the forge can be tried right away
@@ -11,9 +11,13 @@ const fresh = () => ({
   pity: 0, // pulls since the last legendary
   pulls: 0,
   best: 0, // best endless wave
+  books: {}, // skill id -> copies owned (1+ = unlocked; extra copies are fragments for later upgrades)
+  loadout: {}, // class id -> list of equipped skill ids, in slot order
 });
 
 let cache = null;
+
+const isId = (v) => typeof v === "string" && v.length > 0 && v.length <= 64;
 
 export function loadSave() {
   if (cache) return cache;
@@ -26,6 +30,10 @@ export function loadSave() {
       if (o.eq && typeof o.eq === "object") {
         s.eq.weapon = typeof o.eq.weapon === "string" ? o.eq.weapon : null;
         s.eq.acc = typeof o.eq.acc === "string" ? o.eq.acc : null;
+      }
+      if (o.books && typeof o.books === "object") for (const [id, n] of Object.entries(o.books)) if (Number.isFinite(n) && n > 0) s.books[id] = Math.floor(n);
+      if (o.loadout && typeof o.loadout === "object") {
+        for (const [cls, ids] of Object.entries(o.loadout)) if (Array.isArray(ids)) s.loadout[cls] = ids.filter(isId).slice(0, 8);
       }
     }
   } catch (e) {
