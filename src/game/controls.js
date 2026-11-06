@@ -1,5 +1,6 @@
 // Lanternfall: the touch stick. Drag it left or right to walk, push it up to jump.
-// The Jump and Attack buttons are wired in main.js (data-pad). The keyboard is wired there too.
+// It works while a run is played and while the hero walks in the hub (G.state "play" or "hub").
+// The Jump and Attack buttons are wired in main.js (data-pad). The keyboard is wired there too (and in hub.js for the hub).
 import { $, G, inp } from "./state.js";
 
 export function initControls() {
@@ -24,7 +25,7 @@ export function initControls() {
       dy = (dy / d) * reach;
     }
     knob.style.transform = "translate(" + dx + "px," + dy + "px)";
-    if (G.state !== "play") {
+    if (G.state !== "play" && G.state !== "hub") {
       inp.left = inp.right = false;
       return;
     }
