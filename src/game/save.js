@@ -1,6 +1,6 @@
 // Lanternfall: persistent data. Everything the player keeps (shards, story progress, items, equipment, pity,
 // skill books and skill loadouts) lives in this one plain object and is stored in this browser's localStorage.
-// Nothing leaves the device. Data only: the rules that change it live in gacha.js, loadout.js and the screens.
+// Nothing leaves the device. Data only: the rules that change it live in gacha.js, skillbook.js, loadout.js and the screens.
 const KEY = "lanternfall.save.v1"; // new fields are additive, so old saves still load
 
 const fresh = () => ({
@@ -8,11 +8,13 @@ const fresh = () => ({
   cleared: 0, // story chapters cleared (chapter n is open when n <= cleared + 1)
   inv: {}, // item id -> level (1 = owned once; duplicates raise it)
   eq: { weapon: null, acc: null },
-  pity: 0, // pulls since the last legendary
-  pulls: 0,
+  pity: 0, // equipment banner: pulls since the last legendary item
+  pulls: 0, // equipment banner: total pulls
   best: 0, // best endless wave
   books: {}, // skill id -> copies owned (1+ = unlocked; extra copies are fragments for later upgrades)
   loadout: {}, // class id -> list of equipped skill ids, in slot order
+  bookPity: 0, // skill book banner: pulls since the last legendary book (its own counter, separate from pity)
+  bookPulls: 0, // skill book banner: total pulls
 });
 
 let cache = null;
@@ -25,7 +27,7 @@ export function loadSave() {
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || "null");
     if (o && typeof o === "object") {
-      for (const k of ["shards", "cleared", "pity", "pulls", "best"]) if (Number.isFinite(o[k])) s[k] = Math.max(0, Math.floor(o[k]));
+      for (const k of ["shards", "cleared", "pity", "pulls", "best", "bookPity", "bookPulls"]) if (Number.isFinite(o[k])) s[k] = Math.max(0, Math.floor(o[k]));
       if (o.inv && typeof o.inv === "object") for (const [id, n] of Object.entries(o.inv)) if (Number.isFinite(n) && n > 0) s.inv[id] = Math.floor(n);
       if (o.eq && typeof o.eq === "object") {
         s.eq.weapon = typeof o.eq.weapon === "string" ? o.eq.weapon : null;
