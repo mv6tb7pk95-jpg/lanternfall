@@ -1,7 +1,9 @@
 // Lanternfall: the menus. Main menu -> (Story: chapter list | Endless) -> class select -> beginRun() in run.js.
-// Also wires the Forge and Loadout screens and the buttons on the result screen.
+// Also wires the Forge and Loadout screens, the hub buildings (hub.js) and the buttons on the result screen.
+// Once the hero has entered the hub (G.home === "hub"), every Back button returns to the square instead of the main menu,
+// and Story / Endless are reached through the Dungeon Gate.
 import { $, G, fail } from "./state.js";
-import { show, refreshMenu } from "./ui.js";
+import { show, refreshMenu, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
 import { CHAPTERS } from "./story.js";
 import { loadSave } from "./save.js";
@@ -9,13 +11,42 @@ import { itemById } from "./gacha.js";
 import { initForge, renderForge } from "./forge.js";
 import { initLoadout, renderLoadout } from "./loadout-ui.js";
 import { beginRun } from "./run.js";
+import { enterHub, initHub, hubActions } from "./hub.js";
 
 const pick = { chapter: null }; // what the class cards will start: a chapter, or null for endless
+let tipped = false; // the controls tip is shown once per visit to the page
 
+const inHub = () => G.home === "hub";
+
+/** The main menu. */
 function goMenu() {
   G.state = "menu";
   refreshMenu();
   show("menu");
+}
+
+/** Put the hero in the square. The first time, a short tip explains how to walk and enter buildings. */
+async function toHub() {
+  await enterHub();
+  if (G.state !== "hub") return;
+  $("toMenu").textContent = "BACK TO THE SQUARE";
+  if (!tipped) {
+    tipped = true;
+    toast("Walk to a building, then press E or tap the Enter button.", 5);
+  }
+}
+
+/** Back from a full-screen panel: the square once the hero has entered the hub, the main menu before that. */
+function goBack() {
+  if (inHub()) toHub().catch(fail);
+  else goMenu();
+}
+
+/** One step back inside the Story / Endless flow: the Dungeon Gate in the hub, the main menu otherwise. */
+function toGate() {
+  G.state = "menu";
+  if (inHub()) show("gate");
+  else goMenu();
 }
 
 function openChapters() {
@@ -47,6 +78,16 @@ function openSelect(chapter) {
   show("select");
 }
 
+function openForge() {
+  renderForge();
+  show("forge");
+}
+
+function openLoadout() {
+  renderLoadout();
+  show("loadout");
+}
+
 export function initMenu() {
   // class cards
   for (const [key, c] of Object.entries(CLASSES)) {
@@ -58,21 +99,26 @@ export function initMenu() {
   }
 
   // main menu
+  $("btnHub").addEventListener("click", () => toHub().catch(fail));
   $("btnStory").addEventListener("click", openChapters);
   $("btnEndless").addEventListener("click", () => openSelect(null));
-  $("btnForge").addEventListener("click", () => {
-    renderForge();
-    show("forge");
-  });
-  $("btnLoadout").addEventListener("click", () => {
-    renderLoadout();
-    show("loadout");
-  });
+  $("btnForge").addEventListener("click", openForge);
+  $("btnLoadout").addEventListener("click", openLoadout);
+
+  // the hub: what each building opens (the Shop has no entry yet, so hub.js says "not open yet")
+  hubActions.forge = openForge;
+  hubActions.loadout = openLoadout;
+  hubActions.gate = () => show("gate");
+  hubActions.party = () => show("party");
+  $("gStory").addEventListener("click", openChapters);
+  $("gEndless").addEventListener("click", () => openSelect(null));
+  $("gBack").addEventListener("click", goBack);
+  $("pBack").addEventListener("click", goBack);
 
   // back buttons
-  $("chBack").addEventListener("click", goMenu);
-  $("fBack").addEventListener("click", goMenu);
-  $("selBack").addEventListener("click", () => (pick.chapter ? openChapters() : goMenu()));
+  $("chBack").addEventListener("click", toGate);
+  $("fBack").addEventListener("click", goBack);
+  $("selBack").addEventListener("click", () => (pick.chapter ? openChapters() : toGate()));
 
   // result screen
   $("retry").addEventListener("click", () => beginRun(G.key, G.chapter).catch(fail));
@@ -80,9 +126,10 @@ export function initMenu() {
     const n = G.chapter && CHAPTERS.find((c) => c.id === G.chapter.id + 1);
     if (n) beginRun(G.key, n).catch(fail);
   });
-  $("toMenu").addEventListener("click", goMenu);
+  $("toMenu").addEventListener("click", goBack);
 
   initForge();
-  initLoadout(goMenu);
+  initLoadout(goBack);
+  initHub();
   refreshMenu();
 }
