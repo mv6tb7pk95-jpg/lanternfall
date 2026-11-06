@@ -72,23 +72,47 @@
   <button class="btn small" id="selBack">BACK</button>
 </div>
 
-<!-- the Lantern Forge (gacha) -->
+<!-- the Lantern Forge: two separate banners. Elements with class "fe" belong to the Equipment tab, "fb" to the Skill Books tab;
+     forge.js shows one set and hides the other. -->
 <div id="forge" class="screen" hidden>
   <h2>LANTERN FORGE</h2>
   <p class="sub">Shards: <b id="fShards">0</b> &nbsp;·&nbsp; <span id="fCount"></span></p>
-  <div class="fbox">
+  <div id="fTabs" style="display:flex;gap:8px;justify-content:center;margin-bottom:10px">
+    <button class="tab on" id="fTabEq">EQUIPMENT</button>
+    <button class="tab" id="fTabBk">SKILL BOOKS</button>
+  </div>
+
+  <!-- Equipment banner: weapons and accessories -->
+  <div class="fbox fe">
     <b>Odds:</b> <span id="fOdds"></span><br>
     <span id="fPity"></span><br>
     Shards are earned by playing. There is no real money in this game.
   </div>
-  <div class="row">
+  <div class="row fe">
     <button class="btn" id="pull1">PULL ×1</button>
     <button class="btn" id="pull10">PULL ×10</button>
   </div>
-  <div id="fMsg"></div>
-  <div class="grid" id="fResults"></div>
-  <div class="fbox"><b>Equipped:</b> <span id="fEquip"></span></div>
-  <div class="grid" id="fInv"></div>
+  <div id="fMsg" class="fe"></div>
+  <div class="grid fe" id="fResults"></div>
+  <div class="fbox fe"><b>Equipped:</b> <span id="fEquip"></span></div>
+  <div class="grid fe" id="fInv"></div>
+
+  <!-- Skill Books banner: skill books only -->
+  <div class="fbox fb" hidden>
+    <b>Odds:</b> <span id="bOdds"></span><br>
+    <div id="bPool"></div>
+    <span id="bPity"></span><br>
+    Shards are earned by playing. There is no real money in this game.
+  </div>
+  <div class="row fb" hidden>
+    <button class="btn" id="bPull1">PULL ×1</button>
+    <button class="btn" id="bPull10">PULL ×10</button>
+  </div>
+  <div id="bMsg" class="fb" hidden style="color:#ff9a8a;font-size:12px;min-height:16px;margin:4px 0"></div>
+  <div class="grid fb" id="bResults" hidden></div>
+  <div class="fbox fb" hidden><b>Skill book collection:</b> books you have not found yet are dimmed.</div>
+  <div class="grid fb" id="bOwned" hidden></div>
+
   <button class="btn small" id="fBack">BACK</button>
   <div style="height:24px"></div>
 </div>
