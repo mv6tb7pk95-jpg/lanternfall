@@ -11,7 +11,7 @@
 // dmg is dealt on EACH real hit of the move. zone is [from, to] px ahead of the hero (negative = behind him);
 // the game adds each enemy's half-width on top. All numbers are first guesses and need play-testing.
 //
-// Books so far: Warden x2, Emberist x2. More are added one class at a time, after reading each effect file.
+// Books so far: Warden x2, Emberist x2, Skulker x1. More are added one class at a time, after reading each effect file.
 // Not a book (yet): fire/flame-pillar. It exports no `act`, so createAct cannot play it. It needs a runner for a
 // single effect (like the basic attacks), with its own hit logic.
 export const BOOKS = [
@@ -26,6 +26,11 @@ export const BOOKS = [
   // hit is at 0.6 s, when the front has reached about 69 px (70 px at 0.604 s). The ring reaches 92 px later, but the
   // hit has already happened, so the zone is +-80 (the game adds each enemy's half-width): it matches what you see.
   { id: "fire-ring", cls: "emberist", rarity: "rare", path: "fire/fire-ring", name: "Fire ring", cd: 7, dmg: 35, zone: [-80, 80] },
+  // Skulker. Seven real hits: six small stabs at 0.05 / 0.105 / 0.16 / 0.215 / 0.27 / 0.325 s, then a big finishing cut
+  // at 0.42 s (the act's own `target` is 60 px ahead; the cuts are drawn 19-37 px out, the finisher spans about -6 to 54).
+  // The game uses one dmg for every hit, so the finisher is not stronger than the stabs: 6 x 7 = 42 in total.
+  // Short range, so he has to stand close. The six stabs are fast, so it finishes at 0.42 s.
+  { id: "dagger-flurry", cls: "skulker", rarity: "rare", path: "melee/dagger-flurry", name: "Dagger flurry", cd: 5, dmg: 6, zone: [5, 85] },
 ];
 
 const BY_ID = Object.fromEntries(BOOKS.map((b) => [b.id, b]));
