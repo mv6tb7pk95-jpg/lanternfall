@@ -1,6 +1,7 @@
 // Lanternfall: one play session.
 // beginRun() loads what a run needs and starts it. updateRun() and drawRun() are called every frame by main.js.
 // finish() pays the rewards, saves, plays the ending lines and shows the result screen.
+// The canvas size on screen is handled by layout.js (a whole-number zoom, set through CSS variables).
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
@@ -13,6 +14,7 @@ import { show, dialogue } from "./ui.js";
 import { loadSave, writeSave } from "./save.js";
 import { statsOf } from "./gacha.js";
 import { CHAPTERS } from "./story.js";
+import { getScale } from "./layout.js";
 import { $, G, inp, clamp, fail, setStatus } from "./state.js";
 
 // ---------------------------------------------------------------- the canvas
@@ -21,16 +23,6 @@ cv.width = VW;
 cv.height = VH;
 const frame = createFrame(VW, VH, 0, 0);
 const bytes = new Uint8ClampedArray(VW * VH * 4), img = new ImageData(bytes, VW, VH);
-
-// shown at a whole-number zoom so every game pixel stays square and crisp
-let scale = 1;
-function resizeView() {
-  scale = Math.max(1, Math.floor(Math.min(innerWidth / VW, innerHeight / VH)));
-  cv.style.width = VW * scale + "px";
-  cv.style.height = VH * scale + "px";
-}
-addEventListener("resize", resizeView);
-resizeView();
 
 let winT = 1.4; // after the boss falls, the game keeps playing this long so its blast can be seen
 
@@ -201,11 +193,12 @@ export function drawRun() {
   composite(frame, bytes, bg, 1);
   ctx.putImageData(img, 0, 0);
 
-  // the act's own screen shake, applied to the whole canvas
+  // the act's own screen shake, applied to the whole canvas (the stage clips it, so it never leaks onto the controls)
   let sx = 0, sy = 0;
   for (const r of G.runs) {
     sx += r.act.shake[0];
     sy += r.act.shake[1];
   }
-  cv.style.transform = sx || sy ? "translate(" + sx * scale + "px," + sy * scale + "px)" : "";
+  const k = getScale();
+  cv.style.transform = sx || sy ? "translate(" + sx * k + "px," + sy * k + "px)" : "";
 }
