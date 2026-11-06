@@ -1,0 +1,23 @@
+/* Lanternfall: styles for the Loadout screen (#loadout). Uses the colours and .screen/.grid/.item/.btn rules of game.css. */
+#loadout{justify-content:flex-start}
+#loadout>:first-child{margin-top:0}
+
+#lTabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
+.tab{background:#1f1b33;border:2px solid #4a4466;border-radius:8px;color:var(--paper);font:inherit;font-size:12px;padding:10px 14px;
+  box-shadow:0 3px 0 #000;touch-action:manipulation}
+.tab.on{border-color:var(--amber);color:var(--amber)}
+.tab:active{transform:translateY(2px);box-shadow:0 1px 0 #000}
+
+#lSlots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:900px;margin-bottom:10px}
+.slot{box-sizing:border-box;min-height:64px;background:rgba(20,17,42,.8);border:2px dashed #4a4466;border-radius:8px;padding:6px;
+  text-align:center;color:var(--mute);font:inherit;font-size:11px;line-height:1.4;touch-action:manipulation}
+.slot.full{border-style:solid;border-color:var(--brass);color:var(--paper)}
+.slot .n{display:block;color:var(--amber);font-size:10px;margin-bottom:2px}
+@media(max-width:520px){#lSlots{grid-template-columns:repeat(2,1fr)}}
+
+.lsk{display:block;width:100%;box-sizing:border-box;font:inherit;color:var(--paper);touch-action:manipulation}
+.lsk.on{background:#2b2646;box-shadow:inset 0 0 0 2px var(--amber)}
+.lsk.lock{opacity:.5}
+.lsk:active:not(:disabled){transform:translateY(2px)}
+
+#lMsg{color:var(--mute);font-size:11px;min-height:16px;margin:4px 0 10px;text-align:center}
