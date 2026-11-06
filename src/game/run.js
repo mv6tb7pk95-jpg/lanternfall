@@ -3,13 +3,15 @@
 // finish() pays the rewards, saves, plays the ending lines and shows the result screen.
 // The canvas size on screen is handled by layout.js (a whole-number zoom, set through CSS variables).
 // The skills of a run are the player's saved loadout (loadout.js): starters plus unlocked skill books, up to 4.
+// Hit-stop: when a projectile hits, combat.js sets G.hitStop; the world then holds still until it has counted down here.
+// Screen shake: combat.js sets G.shakeT / G.shakeAmp; it counts down in real time (also during a hit-stop) and is drawn below.
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
 import { CLASSES } from "./skills.js";
 import { BASIC } from "./attacks.js";
 import { updateAttack, drawShots } from "./attack.js";
-import { hurtPlayer, cast } from "./combat.js";
+import { hurtPlayer, cast, updateProjectiles, updateZones } from "./combat.js";
 import { updateSpawns } from "./waves.js";
 import { show, dialogue } from "./ui.js";
 import { loadSave, writeSave } from "./save.js";
@@ -60,9 +62,10 @@ export async function beginRun(key, chapter) {
   Object.assign(G, {
     state: chapter ? "dialogue" : "play", mode: chapter ? "story" : "endless", key, cls: c, skills, chapter: chapter || null, st,
     player: createPlayer(c, st), world, mods,
-    enemies: [], runs: [], fxs: [], shots: [], missiles: [],
+    enemies: [], runs: [], fxs: [], shots: [], missiles: [], zones: [],
     cds: skills.map(() => 0), cdMax: skills.map(() => 0), cdEls: [],
     wave: 0, kills: 0, got: 0, time: 0, queue: [], gap: 1, cam: 0, sparkN: 0, atkCd: 0,
+    hitStop: 0, shakeT: 0, shake0: 0, shakeAmp: 0,
     boss: null, bossOut: false, bossDown: false, bossT: 0,
   });
   winT = 1.4;
@@ -98,6 +101,8 @@ export async function beginRun(key, chapter) {
 // ---------------------------------------------------------------- end of a run
 async function finish(won) {
   G.state = "dialogue"; // stops the game right now; the result screen follows
+  G.hitStop = 0;
+  G.shakeT = 0;
   inp.left = inp.right = inp.jump = inp.atk = false;
   const s = loadSave(), ch = G.chapter, story = G.mode === "story";
   let gain = G.got, note = "";
@@ -137,9 +142,15 @@ async function finish(won) {
 export function updateRun(dt) {
   if (!G.world || !G.player) return;
   G.world.update(dt, G.cam);
+  if (G.shakeT > 0) G.shakeT = Math.max(0, G.shakeT - dt); // real time: the shake plays out during the hit-stop too
   if (G.state !== "play") return;
+  if (G.hitStop > 0) {
+    // a projectile just hit: everything holds still for a beat
+    G.hitStop = Math.max(0, G.hitStop - dt);
+    return;
+  }
 
-  const frozen = G.runs.some((r) => r.act.frozen); // hit-stop: the whole world holds still for a beat
+  const frozen = G.runs.some((r) => r.act.frozen); // hit-stop of a move's own hit: the whole world holds still for a beat
   for (const r of G.runs) r.act.update(dt);
   for (const r of G.runs) {
     if (!r.free && r.act.t >= Math.min(r.freeAt, r.to)) {
@@ -158,6 +169,8 @@ export function updateRun(dt) {
   updatePlayer(p, dt, inp);
   inp.jump = false;
   updateAttack(dt);
+  updateProjectiles(); // projectile skills: the tip of each is followed here, the first enemy it touches is hurt
+  updateZones(dt); // zone skills: their damage ticks
   G.cds = G.cds.map((c) => Math.max(0, c - dt));
   updateSpawns(dt);
 
@@ -193,15 +206,22 @@ export function drawRun() {
   drawShots(frame);
   // a skill in progress draws its effect, the hero (until control returns) and nothing else
   for (const r of G.runs) r.act.draw(frame, { body: !r.free, target: false });
+  for (const z of G.zones) z.fx.draw(frame);
   for (const fx of G.fxs) fx.draw(frame);
   composite(frame, bytes, bg, 1);
   ctx.putImageData(img, 0, 0);
 
-  // the act's own screen shake, applied to the whole canvas (the stage clips it, so it never leaks onto the controls)
+  // screen shake, applied to the whole canvas (the stage clips it, so it never leaks onto the controls):
+  // the act's own shake, plus the jitter of a projectile hit that fades out as G.shakeT runs down
   let sx = 0, sy = 0;
   for (const r of G.runs) {
     sx += r.act.shake[0];
     sy += r.act.shake[1];
+  }
+  if (G.shakeT > 0) {
+    const a = G.shakeAmp * (G.shakeT / (G.shake0 || 1));
+    sx += Math.round((Math.random() * 2 - 1) * a);
+    sy += Math.round((Math.random() * 2 - 1) * a);
   }
   const k = getScale();
   cv.style.transform = sx || sy ? "translate(" + sx * k + "px," + sy * k + "px)" : "";
