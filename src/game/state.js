@@ -24,6 +24,7 @@ export const G = {
   booted: Promise.resolve(), // main.js replaces this with the promise of the shared effects loading
   key: null, // class key, e.g. "warden"
   cls: null, // the class definition from skills.js
+  skills: null, // the equipped skills of this run, in slot order (set by run.js from the saved loadout); null = class skills
   chapter: null, // the story chapter being played, or null
   st: { atk: 0, hp: 0, cdr: 0, crit: 0, spd: 0, shard: 0 }, // gear bonuses (fractions)
   player: null,
