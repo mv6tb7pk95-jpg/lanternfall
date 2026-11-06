@@ -36,6 +36,8 @@ export const G = {
   M: {}, // shared pixelfx effects: slime ghost bat snake wisp hit-spark small-explosion
   wave: 0, kills: 0, got: 0, time: 0, queue: [], gap: 1, cam: 0, sparkN: 0,
   atkCd: 0,
+  hitStop: 0, // seconds the whole world holds still after a projectile lands (set by combat.js, counted down by run.js)
+  shakeT: 0, shake0: 0, shakeAmp: 0, // the screen shake of a projectile hit
   boss: null, bossOut: false, bossDown: false, bossT: 0,
 };
 
