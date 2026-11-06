@@ -1,19 +1,24 @@
 // Lanternfall: skill books. DATA ONLY: no DOM, no pixelfx calls, no imports.
 // A skill book unlocks one extra skill for one class. Starter skills stay in CLASSES (skills.js) and are always unlocked.
 //
-// A book has the same shape as a skill in skills.js, so startSkill() can play it unchanged:
+// A book has the same shape as a skill in skills.js, so the game can play it like a starter skill:
 //   id, path, name, cd, dmg, zone, free?   (see skills.js for what they mean)
 // plus two fields used by the Forge:
 //   cls     class id that can equip it
 //   rarity  a key of RARITY in gacha.js: "common" | "rare" | "epic" | "legend"
 //
-// Each book below is a pixelfx effect that exports `act` (poses, target, hits), so createAct can perform it.
-// dmg is dealt on EACH real hit of the move. zone is [from, to] px ahead of the hero (negative = behind him);
-// the game adds each enemy's half-width on top. All numbers are first guesses and need play-testing.
+// Two kinds of book:
+//   act book   a pixelfx effect that exports `act` (poses, target, hits), played by createAct through startSkill().
+//              dmg is dealt on EACH real hit of the move. zone is [from, to] px ahead of the hero (negative = behind him);
+//              the game adds each enemy's half-width on top.
+//   zone book  kind: "zone". A single effect with no `act`, played by zoneskill.js: it appears `at` px ahead of the hero
+//              and deals damage at the times listed in `hits` to everything within `half` px of that spot.
+//              (zone here is only for display, at +- half.)
+// All numbers are first guesses and need play-testing.
 //
-// Books so far: Warden x2, Emberist x2, Skulker x1. More are added one class at a time, after reading each effect file.
-// Not a book (yet): fire/flame-pillar. It exports no `act`, so createAct cannot play it. It needs a runner for a
-// single effect (like the basic attacks), with its own hit logic.
+// Books so far: Warden x2, Emberist x3, Skulker x1. More are added one class at a time, after reading each effect file.
+// Not books yet (single effects with no `act`, so they need kind: "zone" entries like Flame pillar):
+//   shadow/shadow-tendrils, ice/ice-spikes.
 export const BOOKS = [
   // Warden. Hit at 0.17 s, a ring about 46 px around him: a wide, close, quick hit.
   { id: "spin-slash", cls: "warden", rarity: "common", path: "melee/spin-slash", name: "Spin slash", cd: 4, dmg: 22, zone: [-55, 55] },
@@ -26,6 +31,12 @@ export const BOOKS = [
   // hit is at 0.6 s, when the front has reached about 69 px (70 px at 0.604 s). The ring reaches 92 px later, but the
   // hit has already happened, so the zone is +-80 (the game adds each enemy's half-width): it matches what you see.
   { id: "fire-ring", cls: "emberist", rarity: "rare", path: "fire/fire-ring", name: "Fire ring", cd: 7, dmg: 35, zone: [-80, 80] },
+  // Emberist, LEGENDARY, a zone book. The floor cracks from 0 s, the column erupts at 0.55 s (full height by 0.67 s),
+  // and it collapses from 1.95 s (gone at 2.45 s; the smoke lasts to 5 s). The column is about 12-17 px wide and the
+  // floor cracks reach about 20-40 px, so it hurts everything within 24 px of the spot 80 px ahead of the hero.
+  // Damage ticks: 0.6 s x2 (the eruption itself), then 1.0, 1.4 and 1.8 s x1 each: 20 x (2+1+1+1) = 100 on an enemy that
+  // stays inside. Enemies walk toward the hero, so most will take fewer ticks. Knockback is small (push 0.3).
+  { id: "flame-pillar", cls: "emberist", rarity: "legend", kind: "zone", path: "fire/flame-pillar", name: "Flame pillar", cd: 11, dmg: 20, zone: [56, 104], at: 80, half: 24, hits: [[0.6, 2], [1.0, 1], [1.4, 1], [1.8, 1]], push: 0.3, castTime: 0.4 },
   // Skulker. Seven real hits: six small stabs at 0.05 / 0.105 / 0.16 / 0.215 / 0.27 / 0.325 s, then a big finishing cut
   // at 0.42 s (the act's own `target` is 60 px ahead; the cuts are drawn 19-37 px out, the finisher spans about -6 to 54).
   // The game uses one dmg for every hit, so the finisher is not stronger than the stabs: 6 x 7 = 42 in total.
