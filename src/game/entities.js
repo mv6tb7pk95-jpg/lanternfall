@@ -43,6 +43,11 @@ export function updatePlayer(p, dt, inp) {
 // Poses are pixelfx rig poses: hands (fx, fy / bx, by) and feet (ffx, ffy / fbx, fby), y negative is up.
 // The walk is held on 12 fps steps like pixelfx's own acts. These numbers are my own tuning.
 function poseOf(p) {
+  if (p.climb) {
+    // on a ladder (the hub): hands and feet swap up and down while he moves. My own tuning, not seen on screen yet.
+    const s = Math.floor((p.climbT || 0) * 6) & 1;
+    return { ...STAND, lean: 0, crouch: 0, fx: 2, fy: s ? -34 : -26, bx: 5, by: s ? -26 : -34, ffx: 2, ffy: s ? -10 : -4, fbx: 5, fby: s ? -4 : -10 };
+  }
   if (p.atk) return attackPose(p.atk.pose, p.atk.t); // the basic attack's swing (attacks.js)
   if (p.y < -1) return { ...STAND, lean: 1, fx: -6, fy: -23, bx: 6, by: -21, ffx: 4, ffy: -10, fbx: -4, fby: -5 };
   if (p.moving) {
@@ -62,10 +67,11 @@ function poseOf(p) {
 }
 
 export function drawPlayer(f, p) {
-  pxShadow(f, p.x, GY, 10 - Math.min(6, Math.round(-p.y / 6)));
+  const gy = p.gy ?? GY; // the hub's upper tiers set p.gy (hubwalk.js); a run leaves it unset and uses the one floor line
+  if (!p.climb) pxShadow(f, p.x, gy, 10 - Math.min(6, Math.round(-p.y / 6)));
   if (p.hurt > 0 && (Math.floor(p.t * 20) & 1)) return; // blink while hurt
   const r = posed(poseOf(p));
-  const bx = Math.round(p.x) - (f.ox | 0), by = GY + Math.round(p.y) - (f.oy | 0);
+  const bx = Math.round(p.x) - (f.ox | 0), by = Math.round(gy) + Math.round(p.y) - (f.oy | 0);
   for (let i = 0; i < r.n; i++) {
     const x = p.face < 0 ? bx - r.xs[i] - 1 : bx + r.xs[i], y = by + r.ys[i];
     if (x < 0 || y < 0 || x >= f.w || y >= f.h) continue;
