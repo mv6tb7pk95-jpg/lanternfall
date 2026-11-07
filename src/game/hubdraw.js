@@ -1,11 +1,18 @@
-// Lanternfall: draws the hub buildings into the frame with the same pxRect helper the rest of the game uses.
-// Pure drawing: it keeps no game state. hub.js calls drawBuildings() once per frame, before the fire props.
+// Lanternfall: draws the hub buildings and the camp props into the frame with the same pxRect helper the rest of the game uses.
+// Pure drawing: it keeps no game state. hub.js calls drawHub() once per frame, before the fire props and the hero.
+// Each building stands on its own tier: its x and floor y come from BUILDING_SPOTS in hubworld.js.
+// The terrain, the lava, the lights and the fire props are painted by hubscene.js; this file draws what stands on it.
 import { pxRect, hex, mix } from "./px.js";
-import { GY } from "./world.js";
+import { VH } from "./world.js";
 import { BUILDINGS, FONT } from "./hubmap.js";
+import { BUILDING_SPOTS, PROPS } from "./hubworld.js";
 
 const BLACK = hex("#000000"), WHITE = hex("#ffffff"), INK = hex("#120f1c"), DOOR = hex("#0b0912"), CHIM = hex("#2a2733");
+const WOODC = hex("#6a4426"), IRONC = hex("#3c3c46"), IRONL = hex("#5a5f6a"), STEELC = hex("#b8c4d0");
 const opaque = (c) => (c | 0xff000000) >>> 0; // make sure a mixed colour keeps full alpha (alpha is the top byte)
+
+/** The five buildings with their x and floor y from the multi-tier map. hub.js uses it to find the one the hero stands at. */
+export const HUB_BUILDINGS = BUILDINGS.filter((b) => BUILDING_SPOTS[b.id]).map((b) => ({ ...b, ...BUILDING_SPOTS[b.id] }));
 
 const cache = new Map();
 function palette(b) {
@@ -34,7 +41,7 @@ function text(f, str, cx, y, color, k = 2) {
 }
 
 function drawBuilding(f, b, t, isNear) {
-  const c = palette(b), x0 = b.x - b.w / 2, top = GY - b.h;
+  const c = palette(b), x0 = b.x - b.w / 2, gy = b.y, top = gy - b.h;
   const fl = 0.5 + 0.5 * Math.sin(t * 6 + b.x); // a slow flicker for the lit windows and doors
   const glow = opaque(mix(c.accDim, c.acc, (isNear ? 0.7 : 0.35) + 0.25 * fl));
 
@@ -63,10 +70,10 @@ function drawBuilding(f, b, t, isNear) {
 
   if (b.id === "gate") {
     // a portal: dark arch with bands of light that pulse
-    pxRect(f, b.x - 12, GY - 40, 24, 40, DOOR);
+    pxRect(f, b.x - 12, gy - 40, 24, 40, DOOR);
     for (let j = 0; j < 8; j++) {
       const k = 0.5 + 0.5 * Math.sin(t * 3 + j * 0.8);
-      pxRect(f, b.x - 10, GY - 38 + j * 5, 20, 4, opaque(mix(c.accDim, c.acc, 0.2 + 0.6 * k)));
+      pxRect(f, b.x - 10, gy - 38 + j * 5, 20, 4, opaque(mix(c.accDim, c.acc, 0.2 + 0.6 * k)));
     }
   } else {
     // two lit windows and a door
@@ -75,10 +82,10 @@ function drawBuilding(f, b, t, isNear) {
       pxRect(f, wx, wy, 8, 8, INK);
       pxRect(f, wx + 1, wy + 1, 6, 6, glow);
     }
-    pxRect(f, b.x - 7, GY - 24, 14, 24, c.roof);
-    pxRect(f, b.x - 6, GY - 22, 12, 22, DOOR);
-    pxRect(f, b.x - 4, GY - 18, 8, 18, glow);
-    if (isNear) pxRect(f, b.x - 7, GY - 24, 14, 2, c.accLit);
+    pxRect(f, b.x - 7, gy - 24, 14, 24, c.roof);
+    pxRect(f, b.x - 6, gy - 22, 12, 22, DOOR);
+    pxRect(f, b.x - 4, gy - 18, 8, 18, glow);
+    if (isNear) pxRect(f, b.x - 7, gy - 24, 14, 2, c.accLit);
   }
 
   if (isNear) {
@@ -91,11 +98,54 @@ function drawBuilding(f, b, t, isNear) {
   }
 }
 
-/** f: the frame (f.ox is the camera), t: seconds, nearId: the id of the building the hero is at, or null. */
-export function drawBuildings(f, t, nearId) {
-  const ox = f.ox | 0;
-  for (const b of BUILDINGS) {
-    if (b.x + b.w / 2 + 14 < ox || b.x - b.w / 2 - 14 > ox + f.w) continue; // off screen
-    drawBuilding(f, b, t, b.id === nearId);
+/** A canvas tent: rows that widen downward, the right half in shade, a dark door, a pole and a small flag. */
+function drawTent(f, tn) {
+  const col = hex(tn.c), dark = opaque(mix(col, BLACK, 0.4)), lite = opaque(mix(col, WHITE, 0.25));
+  const h = Math.round(tn.w * 0.75), top = tn.y - h;
+  for (let j = 0; j < h; j++) {
+    const half = Math.max(1, Math.round((tn.w / 2) * ((j + 1) / h)));
+    pxRect(f, tn.x - half, top + j, half, 1, j % 6 === 5 ? lite : col);
+    pxRect(f, tn.x, top + j, half, 1, dark);
   }
+  pxRect(f, tn.x - 4, tn.y - 12, 8, 12, DOOR);
+  pxRect(f, tn.x, top - 7, 1, 8, WOODC);
+  pxRect(f, tn.x + 1, top - 7, 5, 3, lite);
+}
+
+/** A furnace on the foundry catwalk: an iron box with a glowing mouth and a chimney. */
+function drawFurnace(f, fu, t) {
+  const x0 = fu.x - fu.w / 2, top = fu.y - fu.h, fl = 0.5 + 0.5 * Math.sin(t * 7 + fu.x);
+  pxRect(f, fu.x - 4, top - 14, 8, 14, CHIM);
+  pxRect(f, fu.x - 5, top - 16, 10, 3, IRONL);
+  pxRect(f, x0, top, fu.w, fu.h, IRONC);
+  pxRect(f, x0, top, 2, fu.h, IRONL);
+  pxRect(f, x0, top + 8, fu.w, 2, IRONL);
+  const mouth = opaque(mix(hex("#a82a0a"), hex("#ffd36a"), 0.35 + 0.5 * fl));
+  pxRect(f, fu.x - 7, fu.y - 16, 14, 12, DOOR);
+  pxRect(f, fu.x - 6, fu.y - 14, 12, 10, mouth);
+  pxRect(f, fu.x - 3, fu.y - 12, 6, 6, opaque(mix(mouth, WHITE, 0.4)));
+}
+
+/** A minecart on the rails, loaded with crystal. */
+function drawCart(f, c) {
+  const body = hex("#6a707c"), rim = hex("#8a909c");
+  pxRect(f, c.x - 11, c.y - 13, 22, 8, body);
+  pxRect(f, c.x - 12, c.y - 14, 24, 2, rim);
+  pxRect(f, c.x - 8, c.y - 17, 4, 4, hex("#6aa8ff"));
+  pxRect(f, c.x - 2, c.y - 19, 4, 6, hex("#b07aff"));
+  pxRect(f, c.x + 4, c.y - 16, 4, 3, hex("#7ae0ff"));
+  pxRect(f, c.x - 8, c.y - 5, 5, 5, IRONC);
+  pxRect(f, c.x + 3, c.y - 5, 5, 5, IRONC);
+  pxRect(f, c.x - 7, c.y - 4, 3, 3, STEELC);
+  pxRect(f, c.x + 4, c.y - 4, 3, 3, STEELC);
+}
+
+/** f: the frame (f.ox, f.oy are the camera), t: seconds, nearId: the id of the building the hero is at, or null. */
+export function drawHub(f, t, nearId) {
+  const ox = f.ox | 0, oy = f.oy | 0;
+  const seen = (x, r, y0, y1) => x + r >= ox && x - r <= ox + f.w && y1 >= oy && y0 <= oy + VH; // anything of it on screen?
+  for (const tn of PROPS.tents) if (seen(tn.x, tn.w / 2 + 4, tn.y - tn.w - 10, tn.y)) drawTent(f, tn);
+  for (const fu of PROPS.furnaces) if (seen(fu.x, fu.w / 2 + 6, fu.y - fu.h - 20, fu.y)) drawFurnace(f, fu, t);
+  if (seen(PROPS.cart.x, 16, PROPS.cart.y - 22, PROPS.cart.y)) drawCart(f, PROPS.cart);
+  for (const b of HUB_BUILDINGS) if (seen(b.x, b.w / 2 + 14, b.y - b.h - 40, b.y)) drawBuilding(f, b, t, b.id === nearId);
 }
