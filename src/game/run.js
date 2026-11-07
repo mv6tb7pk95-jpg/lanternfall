@@ -5,6 +5,7 @@
 // The skills of a run are the player's saved loadout (loadout.js): starters plus unlocked skill books, up to 4.
 // Hit-stop: when a projectile hits, combat.js sets G.hitStop; the world then holds still until it has counted down here.
 // Screen shake: combat.js sets G.shakeT / G.shakeAmp; it counts down in real time (also during a hit-stop) and is drawn below.
+// A world with vertical = true (the hub) also scrolls up and down: frame.oy is G.camY. Runs have no such world, so oy stays 0.
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
@@ -198,9 +199,10 @@ export function drawRun() {
   const W = G.world, p = G.player;
   if (!W || !p) return;
   frame.ox = G.cam | 0;
+  frame.oy = W.vertical ? G.camY | 0 : 0; // only the hub scrolls up and down
   clearFrame(frame);
-  const bg = W.drawBg(frame.ox);
-  W.drawProps(frame, frame.ox);
+  const bg = W.drawBg(frame.ox, frame.oy);
+  W.drawProps(frame, frame.ox, frame.oy);
   for (const e of G.enemies) drawEnemy(frame, e);
   if (!p.locked) drawPlayer(frame, p);
   drawShots(frame);
