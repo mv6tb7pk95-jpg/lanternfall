@@ -6,12 +6,13 @@
 //   dmg   damage dealt on EACH real hit of the move (a combo with three hits deals it three times)
 //   zone  [from, to] in px ahead of the hero where enemies are hit (taken from the move's own target distance)
 //   free  optional: seconds into the move when the hero gets control back (default: 0.6 s after the last real hit)
+// Each class also has a passive (passives.js); its name is in the blurb so the class screens show it.
 import { createAct, actSpan } from "./px.js";
 import { GY } from "./world.js";
 
 export const CLASSES = {
   warden: {
-    name: "WARDEN", blurb: "Melee. Sword and stone.", hp: 150,
+    name: "WARDEN", blurb: "Melee. Sword and stone. Passive: Stonehide, 20% less damage taken.", hp: 150,
     skills: [
       { id: "sword-combo", path: "moves/sword-combo", name: "Sword combo", cd: 3, dmg: 14, zone: [-10, 150] },
       { id: "ground-pound", path: "moves/ground-pound", name: "Ground pound", cd: 6, dmg: 20, zone: [-120, 120] },
@@ -19,7 +20,7 @@ export const CLASSES = {
     ],
   },
   emberist: {
-    name: "EMBERIST", blurb: "Ranged. Fire and storm.", hp: 95,
+    name: "EMBERIST", blurb: "Ranged. Fire and storm. Passive: Kindling, every 5th hit burns +75% harder.", hp: 95,
     skills: [
       { id: "fireball-throw", path: "moves/fireball-throw", name: "Fireball", cd: 4, dmg: 40, zone: [150, 230] },
       { id: "meteor-call", path: "moves/meteor-call", name: "Meteor", cd: 12, dmg: 75, zone: [120, 225] },
@@ -27,7 +28,7 @@ export const CLASSES = {
     ],
   },
   skulker: {
-    name: "SKULKER", blurb: "Fast. Blade and pistol.", hp: 105,
+    name: "SKULKER", blurb: "Fast. Blade and pistol. Passive: Cutthroat, +20% crit chance and crits deal x2.", hp: 105,
     skills: [
       { id: "dash-strike", path: "moves/dash-strike", name: "Dash strike", cd: 5, dmg: 50, zone: [70, 215], free: 1.8 },
       { id: "pistol-shots", path: "moves/pistol-shots", name: "Pistol", cd: 2.5, dmg: 12, zone: [150, 215] },
@@ -35,7 +36,7 @@ export const CLASSES = {
     ],
   },
   arbalist: {
-    name: "ARBALIST", blurb: "Ranged. Bow and rocket.", hp: 110,
+    name: "ARBALIST", blurb: "Ranged. Bow and rocket. Passive: Deadeye, +30% damage to targets 120+ px away.", hp: 110,
     skills: [
       { id: "arrow-shot", path: "moves/arrow-shot", name: "Arrow", cd: 1.5, dmg: 28, zone: [140, 225] },
       { id: "rocket-launcher", path: "moves/rocket-launcher", name: "Rocket", cd: 7, dmg: 60, zone: [150, 250] },
@@ -43,7 +44,7 @@ export const CLASSES = {
     ],
   },
   lightkeeper: {
-    name: "LIGHTKEEPER", blurb: "Light and frost.", hp: 115,
+    name: "LIGHTKEEPER", blurb: "Light and frost. Passive: Mending light, each hit heals 1 HP.", hp: 115,
     skills: [
       { id: "holy-smite", path: "moves/holy-smite", name: "Holy smite", cd: 4, dmg: 40, zone: [85, 155] },
       { id: "ice-lance-throw", path: "moves/ice-lance-throw", name: "Ice lance", cd: 3.5, dmg: 34, zone: [130, 210] },
