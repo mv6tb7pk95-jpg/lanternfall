@@ -1,11 +1,10 @@
-// Lanternfall: the parts of the page that are not the canvas: screens, toast, story dialogue, HUD.
-import { $, G } from "./state.js";
-import { loadSave } from "./save.js";
-import { CHAPTERS } from "./story.js";
+// Lanternfall: screens, toast and story dialogue. The HUD is in hud.js (re-exported so main.js keeps working).
+import { $ } from "./state.js";
+export { hud } from "./hud.js";
 
-const SCREENS = ["menu", "chapters", "select", "forge", "loadout", "gate", "party", "over"];
+const SCREENS = ["chapters", "select", "forge", "loadout", "gate", "party", "quests", "settings", "over"];
 
-/** Show one full-screen panel and hide the others. show(null) hides all of them (the game is visible). */
+/** Show one full-screen panel and hide the others. show(null) hides all of them. */
 export function show(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
 }
@@ -16,12 +15,10 @@ export function toast(text, sec = 1.8) {
   t.textContent = text;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    t.hidden = true;
-  }, sec * 1000);
+  toastTimer = setTimeout(() => (t.hidden = true), sec * 1000);
 }
 
-/** Show [speaker, line] pairs one at a time. Tap the box (or press Enter / Space) to go on. Resolves at the end. */
+/** Show [speaker, line] pairs one at a time. Tap the box (or press Enter / Space) to go on. */
 export function dialogue(lines) {
   if (!lines || !lines.length) return Promise.resolve();
   return new Promise((resolve) => {
@@ -33,8 +30,7 @@ export function dialogue(lines) {
       $("dHint").textContent = i < lines.length - 1 ? "tap to continue" : "tap to close";
     };
     function next() {
-      i++;
-      if (i >= lines.length) {
+      if (++i >= lines.length) {
         box.removeEventListener("pointerdown", next);
         removeEventListener("keydown", key);
         box.hidden = true;
@@ -54,25 +50,5 @@ export function dialogue(lines) {
   });
 }
 
-export function refreshMenu() {
-  const s = loadSave();
-  $("mShards").textContent = s.shards;
-  $("mProg").textContent = "Story " + Math.min(s.cleared, CHAPTERS.length) + "/" + CHAPTERS.length + " · Best endless wave " + s.best;
-}
-
-/** Health bar, skill cooldowns and the boss bar. Called every frame while a run is on screen. */
-export function hud() {
-  const p = G.player;
-  if (!p || !G.cls) return;
-  $("hpFill").style.width = Math.max(0, (p.hp / p.maxHp) * 100) + "%";
-  $("hpTxt").textContent = Math.ceil(Math.max(0, p.hp)) + " / " + p.maxHp;
-  // one cooldown overlay per skill button (run.js builds them from the equipped loadout, so this covers 1 to 4 skills)
-  G.cdEls.forEach((el, i) => {
-    el.style.height = (G.cdMax[i] ? (G.cds[i] / G.cdMax[i]) * 100 : 0) + "%";
-  });
-  const b = $("boss");
-  if (G.boss && !G.bossDown) {
-    b.hidden = false;
-    $("bossFill").style.width = Math.max(0, (G.boss.hp / G.boss.maxHp) * 100) + "%";
-  } else b.hidden = true;
-}
+/** Kept so older imports still work; there is no main menu any more. */
+export function refreshMenu() {}
