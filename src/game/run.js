@@ -6,6 +6,8 @@
 // Hit-stop: when a projectile hits, combat.js sets G.hitStop; the world then holds still until it has counted down here.
 // Screen shake: combat.js sets G.shakeT / G.shakeAmp; it counts down in real time (also during a hit-stop) and is drawn below.
 // A world with vertical = true (the hub) also scrolls up and down: frame.oy is G.camY. Runs have no such world, so oy stays 0.
+// Three kinds of run: story (a chapter), endless, and a monster hunt (G.mode "hunt", data and spawner in hunts.js).
+// A hunt is won when G.kills reaches the quota, and the hero goes back to the same hub door afterwards.
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
@@ -14,6 +16,7 @@ import { BASIC } from "./attacks.js";
 import { updateAttack, drawShots } from "./attack.js";
 import { hurtPlayer, cast, updateProjectiles, updateZones } from "./combat.js";
 import { updateSpawns } from "./waves.js";
+import { updateHunt, startHunt } from "./hunts.js";
 import { show, dialogue } from "./ui.js";
 import { loadSave, writeSave } from "./save.js";
 import { statsOf } from "./gacha.js";
@@ -29,11 +32,14 @@ cv.height = VH;
 const frame = createFrame(VW, VH, 0, 0);
 const bytes = new Uint8ClampedArray(VW * VH * 4), img = new ImageData(bytes, VW, VH);
 
-let winT = 1.4; // after the boss falls, the game keeps playing this long so its blast can be seen
+let winT = 1.4; // after the boss falls (or the hunt quota is reached), the game keeps playing this long
 
 // ---------------------------------------------------------------- start
-/** chapter: an entry of CHAPTERS for story mode, or null for endless mode. */
-export async function beginRun(key, chapter) {
+/**
+ * chapter: an entry of CHAPTERS for story mode, or null.
+ * hunt: an entry of HUNTS (hunts.js) for a monster hunt, or null. With neither, it is endless mode.
+ */
+export async function beginRun(key, chapter, hunt = null) {
   if (G.loading) return;
   G.loading = true;
   const c = CLASSES[key], atk = BASIC[key];
@@ -52,7 +58,7 @@ export async function beginRun(key, chapter) {
         mods[atk.path] = m;
       }),
     ]);
-    world = await createWorld(chapter ? chapter.theme : DEFAULT_THEME);
+    world = await createWorld(hunt ? hunt.theme : chapter ? chapter.theme : DEFAULT_THEME);
   } catch (e) {
     G.loading = false;
     setStatus("");
@@ -61,7 +67,7 @@ export async function beginRun(key, chapter) {
 
   const st = statsOf(save);
   Object.assign(G, {
-    state: chapter ? "dialogue" : "play", mode: chapter ? "story" : "endless", key, cls: c, skills, chapter: chapter || null, st,
+    state: chapter ? "dialogue" : "play", mode: hunt ? "hunt" : chapter ? "story" : "endless", key, cls: c, skills, chapter: chapter || null, hunt: hunt || null, st,
     player: createPlayer(c, st), world, mods,
     enemies: [], runs: [], fxs: [], shots: [], missiles: [], zones: [],
     cds: skills.map(() => 0), cdMax: skills.map(() => 0), cdEls: [],
@@ -69,12 +75,12 @@ export async function beginRun(key, chapter) {
     hitStop: 0, shakeT: 0, shake0: 0, shakeAmp: 0,
     boss: null, bossOut: false, bossDown: false, bossT: 0,
   });
-  winT = 1.4;
+  winT = hunt ? 0.8 : 1.4;
   inp.left = inp.right = inp.jump = inp.atk = false;
 
-  $("wave").textContent = chapter ? "0/" + chapter.waves.length : "0";
+  $("wave").textContent = hunt ? "-" : chapter ? "0/" + chapter.waves.length : "0";
   $("kills").textContent = "0";
-  $("chName").textContent = chapter ? "Ch." + chapter.id + " " + chapter.name : "Endless";
+  $("chName").textContent = hunt ? hunt.title + " 0/" + hunt.quota : chapter ? "Ch." + chapter.id + " " + chapter.name : "Endless";
   $("boss").hidden = true;
   $("nextCh").hidden = true;
   const bar = $("skills");
@@ -93,6 +99,7 @@ export async function beginRun(key, chapter) {
   G.loading = false;
   setStatus("");
   show(null); // hide every full-screen panel: the game is visible
+  if (hunt) startHunt();
   if (chapter) {
     await dialogue(chapter.intro);
     if (G.state === "dialogue") G.state = "play";
@@ -105,9 +112,14 @@ async function finish(won) {
   G.hitStop = 0;
   G.shakeT = 0;
   inp.left = inp.right = inp.jump = inp.atk = false;
-  const s = loadSave(), ch = G.chapter, story = G.mode === "story";
+  const s = loadSave(), ch = G.chapter, story = G.mode === "story", hunt = G.mode === "hunt" ? G.hunt : null;
   let gain = G.got, note = "";
-  if (story && won) {
+  if (hunt) {
+    if (won) {
+      gain += hunt.reward; // a hunt can be repeated, and pays its reward every time
+      note = "Hunt complete!";
+    } else note = "Hunt failed: " + G.kills + "/" + hunt.quota;
+  } else if (story && won) {
     const first = s.cleared < ch.id;
     gain += first ? ch.reward : Math.round(ch.reward * 0.4); // a replay pays 40%
     note = first ? "First clear!" : "Replay reward";
@@ -125,9 +137,9 @@ async function finish(won) {
 
   const next = story ? CHAPTERS.find((x) => x.id === ch.id + 1) : null;
   if (story && won) await dialogue(ch.outro);
-  $("overTitle").textContent = story && won ? "CHAPTER CLEARED" : "YOU FELL";
+  $("overTitle").textContent = hunt ? (won ? "HUNT COMPLETE" : "YOU FELL") : story && won ? "CHAPTER CLEARED" : "YOU FELL";
   $("overTxt").textContent = [
-    story ? ch.name : "Wave " + G.wave,
+    hunt ? hunt.title : story ? ch.name : "Wave " + G.wave,
     G.kills + " kills",
     "+" + gain + " shards",
     note,
@@ -173,7 +185,8 @@ export function updateRun(dt) {
   updateProjectiles(); // projectile skills: the tip of each is followed here, the first enemy it touches is hurt
   updateZones(dt); // zone skills: their damage ticks
   G.cds = G.cds.map((c) => Math.max(0, c - dt));
-  updateSpawns(dt);
+  if (G.mode === "hunt") updateHunt(dt); // a hunt spawns its own monsters
+  else updateSpawns(dt);
 
   for (const e of G.enemies) {
     updateEnemy(e, dt, p);
@@ -186,6 +199,10 @@ export function updateRun(dt) {
   G.fxs = G.fxs.filter((fx) => !fx.done());
 
   if (G.mode === "story" && G.bossDown) {
+    winT -= dt;
+    if (winT <= 0) return void finish(true).catch(fail);
+  }
+  if (G.mode === "hunt" && G.kills >= G.hunt.quota) {
     winT -= dt;
     if (winT <= 0) return void finish(true).catch(fail);
   }
