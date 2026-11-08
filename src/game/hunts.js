@@ -2,7 +2,8 @@
 // You defeat `quota` monsters to win and get `reward` shards. Monsters keep coming, never more than `max` at once.
 // A hunt is NOT a story chapter: no waves, no boss, no dialogue. run.js starts one with beginRun(key, null, hunt).
 // This file holds the data (HUNTS) and the spawner (updateHunt). Damage, skills and projectiles are the normal combat engine,
-// so the monsters walk on one flat floor line like in every other run.
+// so the monsters walk on one flat floor line like in every other run. The mood of each ground (mist, lights, pixelfx
+// loops) is added by ambient.js through decorateWorld().
 //
 // theme    colours and prop positions for world.js (the same shape as a chapter's theme)
 // kinds    which monsters appear, in rotation: slime ghost bat snake wisp
@@ -10,10 +11,17 @@
 // scale    multipliers on monster HP and damage
 // quota    how many monsters to defeat; max   how many may be alive at once; every   seconds between two spawns
 // reward   shards for finishing (the shards that monsters drop on the way are added, as in every run)
-import { G, $, clamp } from "./state.js";
+//
+// Spawning: the first monster comes 0.3 s after the start, and one comes within 0.4 s whenever the field is empty.
+// A new monster appears just inside the left or right edge of the screen (EDGE px in), at least 80 px from the hero, so it
+// is seen at once. It used to appear 24 px outside the edge, and with the camera at the left end every one came from the right.
+// If a monster cannot be created, the error is shown once (the red box) instead of failing silently.
+// The top bar shows "kills/quota · n on field", so you can see that the spawner is alive.
+import { G, $, clamp, fail } from "./state.js";
 import { VW, WORLD_W } from "./world.js";
 import { spawnEnemy } from "./entities.js";
 import { toast } from "./ui.js";
+import { decorateWorld } from "./ambient.js";
 
 const GRAVE = {
   id: "grave",
@@ -54,32 +62,63 @@ export const HUNTS = {
   },
 };
 
-let timer = 1, n = 0, shown = -1;
+const EDGE = 10; // px inside the screen edge where a new monster appears
+let timer = 0.3, n = 0, shown = "", reported = false;
 
 /** Called by run.js when a hunt begins. */
 export function startHunt() {
-  timer = 1;
+  timer = 0.3;
   n = 0;
-  shown = -1;
+  shown = "";
+  reported = false;
   toast("Defeat " + G.hunt.quota + " monsters", 2.4);
+  // the ambience loads in the background; if it fails, the hunt plays on without it
+  decorateWorld(G.world, G.hunt.id).catch((e) => console.warn("hunt ambience skipped:", e));
+}
+
+const label = (h) => h.title + " " + Math.min(G.kills, h.quota) + "/" + h.quota + " · " + G.enemies.length + " on field";
+
+/** Create one monster at a screen edge. Shows an error once if it cannot be created. */
+function spawnOne(h) {
+  const p = G.player;
+  let type = h.kinds[n % h.kinds.length];
+  if (!G.M[type]) type = h.kinds.find((k) => G.M[k]); // a missing effect: use another kind of this hunt
+  if (!type) {
+    if (!reported) {
+      reported = true;
+      fail(new Error("Hunt spawn: no monster effect is loaded for " + h.kinds.join(", ") + ". Loaded: " + Object.keys(G.M).join(", ")));
+    }
+    return;
+  }
+  const left = G.cam + EDGE, right = G.cam + VW - EDGE;
+  const order = n % 2 ? [right, left] : [left, right];
+  n++;
+  const ok = (x) => x >= 10 && x <= WORLD_W - 10 && Math.abs(x - p.x) >= 80; // seen at once, but not on top of the hero
+  const x = clamp(order.find(ok) ?? order[0], 10, WORLD_W - 10);
+  try {
+    G.enemies.push(spawnEnemy(type, G.M[type], x, { scale: h.scale, tint: h.tint }));
+  } catch (e) {
+    if (!reported) {
+      reported = true;
+      fail(e);
+    }
+  }
 }
 
 /** Called every frame while a hunt is playing: shows the count and spawns the next monster when it is due. */
 export function updateHunt(dt) {
   const h = G.hunt;
   if (!h) return;
-  if (G.kills !== shown) {
-    shown = G.kills;
-    $("chName").textContent = h.title + " " + Math.min(shown, h.quota) + "/" + h.quota;
+  const key = G.kills + ":" + G.enemies.length;
+  if (key !== shown) {
+    shown = key;
+    $("chName").textContent = label(h);
   }
   // never spawn more than are still needed, and never more than `max` at once
   if (G.kills + G.enemies.length >= h.quota || G.enemies.length >= h.max) return;
   timer -= dt;
+  if (G.enemies.length === 0) timer = Math.min(timer, 0.4); // the field is never empty for long
   if (timer > 0) return;
   timer = h.every;
-  const side = n % 2 ? 1 : -1, type = h.kinds[n % h.kinds.length];
-  n++;
-  let x = side > 0 ? G.cam + VW + 24 : G.cam - 24;
-  if (x < 10 || x > WORLD_W - 10) x = side > 0 ? G.cam - 24 : G.cam + VW + 24; // the other edge
-  G.enemies.push(spawnEnemy(type, G.M[type], clamp(x, 10, WORLD_W - 10), { scale: h.scale, tint: h.tint }));
+  spawnOne(h);
 }
