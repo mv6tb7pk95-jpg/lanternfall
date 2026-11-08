@@ -1,11 +1,14 @@
 // Lanternfall: the Party Board screen. It builds its own markup inside #party (so game.html and ui.js need no change) and
 // talks to the relay only through net.js. Three views: the board (public rooms, join by code), the create form, and the room.
-// Starting a shared hunt is NOT wired yet: the Start button is disabled until the hunt-sync batch.
-import { G } from "./state.js";
+// Start hunt: the host's button sends "start"; the relay answers EVERY member (the host too) with { hunt, seed, ids },
+// and begin() below starts the run for each of them: beginRun(class, null, hunt, { host, n }) (coop.js has the rules).
+import { G, fail } from "./state.js";
 import { toast } from "./ui.js";
 import { HUNTS } from "./hunts.js";
 import { CLASSES } from "./skills.js";
-import { net, connected, isHost, onNet, listRooms, createRoom, joinRoom, leaveRoom, setReady, setRoom, chat, relayUrl, setRelay, getName, setName } from "./net.js";
+import { beginRun } from "./run.js";
+import { leave as leaveHub } from "./hub.js";
+import { net, connected, isHost, onNet, listRooms, createRoom, joinRoom, leaveRoom, setReady, setRoom, startHunt as startShared, chat, relayUrl, setRelay, getName, setName } from "./net.js";
 
 const CSS = `
 #party .pb-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:flex-end;margin:8px 0}
@@ -72,6 +75,20 @@ async function join(id, pw) {
   await joinRoom(id, pw, G.key || "");
   chatLog.length = 0;
   render();
+}
+
+/** The relay said "start": begin the shared hunt with the class we picked last (Warden if none). */
+function begin(m) {
+  if (G.loading) return;
+  if (G.state === "play" || G.state === "dialogue") {
+    toast("Your party started a hunt, but you are in the middle of a run.", 4);
+    return;
+  }
+  const h = HUNTS[m.hunt];
+  if (!h) return;
+  if (G.state === "hub") leaveHub(); // stop the walking first; this also remembers where we stood
+  const n = Array.isArray(m.ids) && m.ids.length ? m.ids.length : net.players.size;
+  beginRun(G.key || "warden", null, h, { host: isHost(), n }).catch(fail);
 }
 
 function syncSide() {
@@ -193,7 +210,7 @@ function roomView(body, keep) {
     el("b", "", "Room " + r.id),
     document.createTextNode(" · " + (r.pub ? "public" : "private") + (r.locked ? " · password" : "") + " · up to " + r.max + " players"),
     document.createElement("br"),
-    document.createTextNode("Hunt: " + (h ? h.title + " (defeat " + h.quota + ", reward " + h.reward + " shards)" : r.hunt))
+    document.createTextNode("Hunt: " + (h ? h.title + " (defeat " + h.quota + ", reward " + h.reward + " shards; more for a bigger party)" : r.hunt))
   );
   const copy = () => {
     const c = navigator.clipboard;
@@ -223,13 +240,19 @@ function roomView(body, keep) {
   const acts = el("div", "pb-row");
   acts.append(btn(me && me.ready ? "Not ready" : "Ready", () => setReady(!(me && me.ready)), "btn small"));
   if (host) {
-    const st = btn("Start hunt", () => {}, "btn small");
-    st.disabled = true;
-    st.title = "Shared hunts arrive in the next update";
+    // the host can start when every other member is ready (alone, he can start at once)
+    const waiting = [...net.players.values()].filter((p) => p.id !== net.host && !p.ready).length;
+    const st = btn(waiting ? "Start hunt (" + waiting + " not ready)" : "Start hunt", () => startShared(), "btn small");
+    st.disabled = net.phase !== "lobby" || waiting > 0;
     acts.append(st);
   }
   acts.append(btn("Leave room", () => { leaveRoom(); chatLog.length = 0; render(); refresh(); }));
-  body.append(acts, el("div", "fbox pb-wide", "Ready flags and chat work now. Starting a shared hunt arrives in the next update."));
+  body.append(
+    acts,
+    el("div", "fbox pb-wide", host
+      ? "Press Start hunt when everyone is ready. Everyone fights with the class they picked last (Warden if none). The party shares one kill count, and a hero who falls gets back up with half health."
+      : "The host starts the hunt once everyone is ready. You fight with the class you picked last (Warden if none).")
+  );
 
   const log = el("div", "fbox pb-wide pb-log");
   if (!chatLog.length) log.append(el("div", "pb-empty", "No messages yet."));
@@ -300,6 +323,7 @@ export function initParty() {
   }
 
   onNet((t, d) => {
+    if (t === "start") begin(d);
     if (t === "chat") {
       chatLog.push({ name: d.name, text: d.text });
       if (chatLog.length > 30) chatLog.shift();
