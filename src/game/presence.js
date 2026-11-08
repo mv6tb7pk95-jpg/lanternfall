@@ -1,5 +1,6 @@
 // Lanternfall presence. Hub: we auto-join the shared Hub channel and draw EVERY player in our hub room (nametag, class gem, health).
 // Party: the left-side panel (#pHud) shows our party room. In a shared hunt the party members are drawn on the hunt map too.
+// Class: our class is always myClass() (heroclass.js), never "whatever the last run used". The nametag gem shows the class initial.
 //   presenceTick()          every frame (hud.js): connect, send our state, smooth the others, update the panel
 //   drawRemotes(f, roomId)  the hub's drawProps (hub.js): draws the other heroes in that room
 //   drawHuntMates(f)        a shared hunt: the other party members and a nametag for every hero (run.js calls it through coop.js)
@@ -8,9 +9,9 @@ import { net, hub, connected, hubConnected, isHost, getName, relayUrl, sendState
 import { drawPlayer } from "./entities.js";
 import { pxRect, hex } from "./px.js";
 import { GY } from "./world.js";
-import { CLASSES } from "./skills.js";
 import { ROOMS } from "./fieldmaps.js";
 import { setMates } from "./coop.js";
+import { myClass, classOf } from "./heroclass.js";
 
 const MAX_DRAW = 14; // at most this many other heroes are drawn (the nearest ones)
 
@@ -44,7 +45,7 @@ let hubIn = false;
 function sendSelf(now) {
   const p = G.player, h = here();
   if (!p || !h) return;
-  const s = { x: Math.round(h.x), y: Math.round(h.y), d: p.face < 0 ? -1 : 1, a: animOf(p), hp: Math.ceil(Math.max(0, p.hp)), mh: p.maxHp, c: G.key || "warden", r: h.r };
+  const s = { x: Math.round(h.x), y: Math.round(h.y), d: p.face < 0 ? -1 : 1, a: animOf(p), hp: Math.ceil(Math.max(0, p.hp)), mh: p.maxHp, c: myClass(), r: h.r };
   const sig = [s.x, s.y, s.d, s.a, s.hp, s.mh, s.c, s.r].join("|");
   if (connected() && due(gateP, sig, now, 70, 1000)) sendState(s);
   if (!hubConnected()) {
@@ -151,9 +152,11 @@ function tag(f, name, cx, fy, kind, frac, cls) {
   const [bd, tc] = KIND[kind] || KIND.other;
   const s = String(name || "?").toUpperCase().slice(0, 12), w = s.length * 4 - 1, pw = w + 4;
   const x0 = Math.round(cx - pw / 2), y0 = Math.round(fy) - 56;
-  if (cls) {
-    pxRect(f, x0 - 6, y0 - 1, 5, 9, C.edge); // class gem: its colour comes from the class key
+  const cd = classOf(cls); // an unknown or empty class draws no gem
+  if (cd) {
+    pxRect(f, x0 - 6, y0 - 1, 5, 9, C.edge); // class gem: its colour comes from the class key, the letter is the class initial
     pxRect(f, x0 - 5, y0, 3, 7, gem(cls));
+    text(f, cd.name[0], x0 - 5, y0 + 1, C.edge);
   }
   pxRect(f, x0 - 1, y0 - 1, pw + 2, 9, bd);
   pxRect(f, x0, y0, pw, 7, C.plate);
@@ -184,7 +187,7 @@ export function drawRemotes(f, roomId) {
     drawPlayer(f, bodies.get(p.id));
     tag(f, p.name, p.vx, p.vy, kind, p.hp / p.mh, p.cls);
   }
-  if (me && roomId === G.roomId) tag(f, getName(), me.x, (me.gy ?? GY) + me.y, "me", me.hp / me.maxHp, G.key);
+  if (me && roomId === G.roomId) tag(f, getName(), me.x, (me.gy ?? GY) + me.y, "me", me.hp / me.maxHp, myClass());
 }
 
 /** A shared hunt: the other party members standing in this hunt (same place id as coop.js), then our own nametag. */
@@ -197,7 +200,7 @@ function drawHuntMates(f) {
     drawPlayer(f, bodies.get(p.id));
     tag(f, p.name, p.vx, p.vy, p.id === net.host ? "host" : "party", p.hp / p.mh, p.cls);
   }
-  if (me) tag(f, getName(), me.x, GY + me.y, "me", me.hp / me.maxHp, G.key); // our hero is drawn right after this
+  if (me) tag(f, getName(), me.x, GY + me.y, "me", me.hp / me.maxHp, myClass()); // our hero is drawn right after this
 }
 
 // ---------------------------------------------------------------- the party panel (left side), party room only
@@ -243,8 +246,11 @@ function ensurePanel() {
   return panel;
 }
 
-const classKey = (p) => (p.id === net.you ? G.key || p.cls : p.cls) || "";
-const classLabel = (k) => (CLASSES[k] && CLASSES[k].name) || "";
+const classKey = (p) => (p.id === net.you ? myClass() : classOf(p.cls) ? p.cls : "");
+const classLabel = (k) => {
+  const c = classOf(k);
+  return c ? c.name : "";
+};
 const where = (r) => (!r ? "" : r.startsWith("h:") ? "On a hunt" : r === "run" ? "In a run" : (ROOMS[r] && ROOMS[r].name) || "");
 
 function build(list) {
@@ -311,7 +317,7 @@ export function presenceTick() {
   // entering the hub joins the shared channel by itself (retries with a growing pause if the server is down)
   if (G.state === "hub" && !hubConnected() && relayUrl() && now >= retryAt) {
     retryAt = now + Math.min(30000, 3000 * 2 ** fails);
-    joinHub(G.key || "warden").then((ok) => {
+    joinHub(myClass()).then((ok) => {
       fails = ok ? 0 : Math.min(fails + 1, 4);
     });
   }
