@@ -1,0 +1,70 @@
+/* Lanternfall dark-fantasy theme. Loaded after game.css, loadout.css and hub.css, so it overrides them. */
+:root{
+  --brass:#d9a441;--amber:#f3c76a;--paper:#e9e4d6;--mute:#8d96a8;
+  --iron:#0c0f15;--plate:#1a2030;--plate2:#121723;--steel:#3a4458;--glow:rgba(243,199,106,.55);
+  --pix:"Pixelify Sans",ui-monospace,Menlo,Consolas,monospace;
+}
+html,body{background:var(--iron)}
+h1,h2,.btn,.tab,.card b,.chap b,#play,#side small,.item b{font-family:var(--pix)}
+h1{letter-spacing:2px;text-shadow:0 3px 0 #000,0 0 14px rgba(217,164,65,.35)}
+h2{font-size:20px;text-shadow:0 2px 0 #000}
+
+/* dark metal plate: steel edge, gold rim, rivets in the corners */
+.fbox,.card,.chap,.item,.btn,.tab,#toast,#dlg,.hp,.bb,#side{
+  border:2px solid var(--brass);
+  background:
+    radial-gradient(circle at 5px 5px,#8d96a8 0 1.5px,transparent 2.5px),
+    radial-gradient(circle at calc(100% - 5px) 5px,#8d96a8 0 1.5px,transparent 2.5px),
+    radial-gradient(circle at 5px calc(100% - 5px),#8d96a8 0 1.5px,transparent 2.5px),
+    radial-gradient(circle at calc(100% - 5px) calc(100% - 5px),#8d96a8 0 1.5px,transparent 2.5px),
+    linear-gradient(var(--plate),var(--plate2));
+  box-shadow:inset 0 0 0 1px var(--steel),0 3px 0 #000;
+}
+.screen{background:radial-gradient(ellipse at 40% 30%,#1c2434,#07090e)}
+.btn{color:var(--paper);font-size:16px;border-radius:3px;min-width:240px;padding:12px 22px}
+.btn.small{font-size:14px}
+.card,.chap,.item{border-radius:3px}
+.card b,.chap b{color:var(--amber)}
+.fbox{border-radius:3px;color:#c9cfdb}
+.tab{color:var(--mute);border-radius:3px;padding:8px 14px}
+.tab.on{color:var(--amber);box-shadow:inset 0 0 0 1px var(--brass),0 0 10px var(--glow)}
+.btn:focus-visible,.card:focus-visible,.chap:focus-visible,.tab:focus-visible,#side button:focus-visible,#play:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+@media(hover:hover){
+  .btn:not(:disabled):hover,.card:hover,.chap:not(:disabled):hover,.tab:hover{color:#fff;box-shadow:inset 0 0 0 1px var(--amber),0 0 14px var(--glow),0 3px 0 #000}
+}
+
+/* HUD */
+.hp{border-radius:2px;height:18px}
+.hp i{background:linear-gradient(#e0554f,#8f2224)}
+.hp span{line-height:18px;font-size:11px}
+.info{font-family:var(--pix);font-size:13px;color:var(--amber)}
+.bb{border-radius:2px}
+#toast,#dlg{border-radius:3px;color:var(--paper)}
+#dWho{font-family:var(--pix);font-size:14px}
+
+/* title screen */
+#title{position:fixed;inset:0;z-index:40;background:#05070b;transition:opacity .7s ease}
+#title.out{opacity:0;pointer-events:none}
+#titleArt{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;image-rendering:pixelated}
+#title .tc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;
+  background:radial-gradient(ellipse at center,rgba(5,7,11,0) 30%,rgba(5,7,11,.75))}
+#title h1{font-size:clamp(34px,8vw,72px);margin:0;letter-spacing:4px}
+#play{font-family:var(--pix);font-size:24px;font-weight:700;color:#1a1204;min-width:220px;padding:14px 40px;cursor:pointer;
+  background:linear-gradient(#f3c76a,#c78e2b);border:2px solid #fff0c4;border-radius:3px;box-shadow:0 4px 0 #5a3b0a,0 0 22px var(--glow);touch-action:manipulation}
+#play:active{transform:translateY(3px);box-shadow:0 1px 0 #5a3b0a,0 0 22px var(--glow)}
+@media(hover:hover){#play:hover{filter:brightness(1.1);box-shadow:0 4px 0 #5a3b0a,0 0 34px var(--glow)}}
+#play:disabled{opacity:.8}
+
+/* right sidebar: hidden during a run */
+#side{position:fixed;z-index:11;right:max(8px,env(safe-area-inset-right));top:calc(var(--top) + 8px + env(safe-area-inset-top,0px));
+  display:flex;flex-direction:column;gap:5px;padding:6px;border-radius:4px}
+body.playing #side{display:none}
+#side button{width:48px;height:48px;padding:0;border-radius:3px;border:2px solid var(--steel);color:var(--paper);cursor:pointer;touch-action:manipulation;
+  background:linear-gradient(#232b3d,#141a27);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+#side button span{font-size:20px}
+#side button small{font-size:9px;margin-top:3px;color:var(--mute)}
+#side button:active{transform:translateY(2px);border-color:var(--amber)}
+@media(hover:hover){#side button:hover{border-color:var(--amber);box-shadow:0 0 12px var(--glow);color:#fff}}
+@media(max-height:430px){#side{gap:3px;padding:4px}#side button{width:42px;height:42px}#side button small{display:none}}
+body:not(.playing) .screen{padding-right:calc(66px + env(safe-area-inset-right))}
+#over{padding-right:14px}
