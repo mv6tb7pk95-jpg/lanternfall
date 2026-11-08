@@ -1,4 +1,6 @@
 // Lanternfall: the Party Board screen (markup built inside #party). Talks to the relay only through net.js.
+// Class: a picker (toggle buttons) on the board and in the room. The choice is saved (heroclass.js), sent in hello and in a "cls" message,
+// shown in the member list, and passed to beginRun() when the hunt starts. myClass() always gives a valid class key.
 // Start flow: the relay sends {start} to every member; begin() starts the run (retrying while the game is busy loading),
 // then answers "go". Until "go" arrives the relay resends start, and an idle client asks "sync" every 4 s and when its tab returns.
 import { G, fail } from "./state.js";
@@ -7,6 +9,7 @@ import { HUNTS } from "./hunts.js";
 import { CLASSES } from "./skills.js";
 import { beginRun } from "./run.js";
 import { leave as leaveHub } from "./hub.js";
+import { myClass, chooseClass, classOf } from "./heroclass.js";
 import { net, connected, isHost, onNet, send, listRooms, createRoom, joinRoom, leaveRoom, setReady, setRoom, startHunt as startShared, chat, relayUrl, setRelay, getName, setName } from "./net.js";
 
 const CSS = `
@@ -24,6 +27,11 @@ const CSS = `
 #party .pb-tag.ok{color:#8fe3a0;border-color:#4a9a5c}
 #party .pb-log{max-height:96px;overflow:auto;text-align:left;font-size:12px;color:#c9cfdb}
 #party .pb-msg{color:#ff9a8a;font-size:12px;min-height:16px;margin:4px 0}
+#party .pb-cls{margin:6px auto}
+#party .pb-cls .pb-row{margin:4px 0}
+#party .pb-cls .tab{min-width:84px}
+#party .pb-cls .tab:disabled{opacity:.5}
+#party .pb-clsinfo{font-size:12px;color:#c9cfdb;text-align:center}
 #side button.on{border-color:var(--amber);box-shadow:0 0 10px var(--glow)}
 @media(max-height:430px){#side button{height:36px}}
 `;
@@ -71,9 +79,24 @@ async function run(fn) {
 async function join(id, pw) {
   id = String(id || "").trim().toUpperCase();
   if (!/^[A-HJ-NP-Z2-9]{5}$/.test(id)) throw new Error("A room code has 5 letters or digits.");
-  await joinRoom(id, pw, G.key || "");
+  await joinRoom(id, pw, myClass());
   chatLog.length = 0;
   render();
+}
+
+// ---------------------------------------------------------------- class picker
+/** Toggle buttons for every class. locked = true while a hunt is running (the choice is kept, but cannot change). */
+function classPicker(locked) {
+  const cur = myClass(), wrap = el("div", "pb-wide pb-cls"), tabs = el("div", "pb-row");
+  for (const [k, c] of Object.entries(CLASSES)) {
+    const b = btn(c.name, () => { chooseClass(k); render(); }, "tab" + (k === cur ? " on" : ""));
+    b.disabled = !!locked;
+    b.setAttribute("aria-pressed", k === cur ? "true" : "false");
+    tabs.append(b);
+  }
+  const c = CLASSES[cur];
+  wrap.append(el("b", "", "Your class"), tabs, el("div", "fbox pb-clsinfo", c.name + " · HP " + c.hp + " · " + c.blurb));
+  return wrap;
 }
 
 // ---------------------------------------------------------------- shared hunt start
@@ -118,7 +141,8 @@ async function attempt() {
   try {
     if (G.state === "hub") leaveHub(); // stop the walking and remember where we stood
     const n = Array.isArray(m.ids) && m.ids.length ? m.ids.length : net.players.size;
-    await beginRun(G.key || "warden", null, h, { host: isHost(), n });
+    const key = myClass(); // the class chosen on the Party Board: always a real class, so stats, skills and loadout match it
+    await beginRun(key, null, h, { host: isHost(), n });
     if (G.mode === "hunt" && G.coop) {
       doneSeed = m.seed;
       pending = null;
@@ -182,7 +206,7 @@ async function refresh() {
 }
 
 function boardView(body) {
-  q("pSub").textContent = "Find a party or start your own. Co-op hunts take 2 to 4 players.";
+  q("pSub").textContent = "Pick your class, then find a party or start your own. Co-op hunts take 2 to 4 players.";
   const nameIn = input({ value: getName(), maxLength: 16 });
   nameIn.addEventListener("change", () => (nameIn.value = setName(nameIn.value)));
   const top = el("div", "pb-row");
@@ -211,7 +235,7 @@ function boardView(body) {
       }
     })
   );
-  body.append(top, joinRow, el("h3", "", "Public rooms"), list, srvRow);
+  body.append(top, classPicker(false), joinRow, el("h3", "", "Public rooms"), list, srvRow);
 }
 
 function createView(body) {
@@ -278,11 +302,14 @@ function roomView(body, keep) {
     body.append(el("small", "", "You are the host. Pick the hunting ground:"), tabs);
   }
 
+  body.append(classPicker(net.phase !== "lobby"));
+
   body.append(el("h3", "", "Party (" + net.players.size + "/" + r.max + ")"));
   const mem = el("div", "pb-list");
   for (const p of net.players.values()) {
     const row = el("div", "fbox pb-mem");
-    const cname = CLASSES[p.cls] ? CLASSES[p.cls].name : "no class yet";
+    const c = classOf(p.id === net.you ? myClass() : p.cls); // our own entry always shows our saved choice
+    const cname = c ? c.name : "choosing a class";
     row.append(el("span", "", (p.id === net.host ? "★ " : "") + p.name + (p.id === net.you ? " (you)" : "") + " · " + cname), el("span", "pb-tag" + (p.ready ? " ok" : ""), p.ready ? "ready" : "not ready"));
     mem.append(row);
   }
@@ -300,8 +327,8 @@ function roomView(body, keep) {
   body.append(
     acts,
     el("div", "fbox pb-wide", host
-      ? "Press Start hunt when everyone is ready. Everyone fights with the class they picked last (Warden if none). The party shares one kill count, and a hero who falls gets back up with half health."
-      : "The host starts the hunt once everyone is ready. You fight with the class you picked last (Warden if none).")
+      ? "Press Start hunt when everyone is ready. Everyone fights with the class shown next to their name. The party shares one kill count, and a hero who falls gets back up with half health."
+      : "The host starts the hunt once everyone is ready. You fight with the class you chose above.")
   );
 
   const log = el("div", "fbox pb-wide pb-log");
@@ -370,6 +397,8 @@ export function initParty() {
     b.innerHTML = "<span>👥</span><small>Party</small>";
     nav.insertBefore(b, nav.querySelector('[data-p="settings"]'));
   }
+
+  myClass(); // fixes and saves the class choice now, before any room or hub connection says hello
 
   onNet((t, d) => {
     if (t === "start") begin(d);
