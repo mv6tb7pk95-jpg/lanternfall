@@ -1,5 +1,9 @@
-// Lanternfall: the hub. A multi-tier camp (Upper Camp, Catacombs, Crystal Mines, Ember Foundry) with a Shop, the Lantern Forge,
+// Lanternfall: the hub. Four rooms (Upper Camp, Catacombs, Crystal Mines, Ember Foundry) with a Shop, the Lantern Forge,
 // Loadout, the Party Board and the Dungeon Gate, each standing on its own tier (hubworld.js).
+//
+// One room is on screen at a time (hubrooms.js). The camera is locked inside the room's box. When the hero walks through
+// an exit (staircase, ladder, bridge, rails) he enters the next room: the screen fades through black, the camera cuts to
+// the new room and its name appears.
 //
 // How it fits in without touching the run loop: the hub is a "world" object like a run's map. While G.state is "hub",
 // run.js still calls G.world.update(dt, cam) and drawRun() every frame (it does that for any state), so this file's world
@@ -13,13 +17,14 @@
 // Screens: standing at a building and pressing E / Enter (or tapping the prompt) calls hubActions[id]. menu.js fills
 // hubActions with the functions that open each screen, so this file does not import the menus (no import cycle).
 // G.state is "menu" while a screen is open and "hub" while the hero can walk.
-import { $, G, inp, clamp, fail, setStatus } from "./state.js";
+import { $, G, inp, fail, setStatus } from "./state.js";
 import { show, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
 import { createPlayer } from "./entities.js";
-import { VW, VH, WORLD_W } from "./world.js";
+import { VW, VH } from "./world.js";
 import { SPAWN } from "./hubworld.js";
-import { walkStep, canClimb, onTier, placeHero, camTarget } from "./hubwalk.js";
+import { walkStep, canClimb, onTier, placeHero } from "./hubwalk.js";
+import { roomAt, roomCam } from "./hubrooms.js";
 import { createHubScene } from "./hubscene.js";
 import { HUB_BUILDINGS, drawHub } from "./hubdraw.js";
 
@@ -29,8 +34,10 @@ export const hubActions = {};
 let world = null; // the hub world, built once
 let clock = 0; // seconds, for the flicker of the lights
 let near = null; // the building the hero is standing at, or null
+let room = null; // the room on screen (hubrooms.js)
 let lastX = SPAWN.x; // where he stood when he left, so he comes back to the same spot and tier
 let lastY = SPAWN.y;
+let veil = null; // the full-screen cover used for the room fade
 
 const KEYS = { ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right" };
 const UP = new Set(["ArrowUp", "w", "W"]);
@@ -44,6 +51,27 @@ function setNear(b) {
   if (!pr) return;
   pr.hidden = !b;
   if (b) pr.textContent = "Enter " + b.title + "  ·  E or tap";
+}
+
+/** Show the room's name. dark = true covers the screen in black first (a room change), false shows only the name. */
+function announce(name, dark) {
+  if (!veil) {
+    veil = document.createElement("div");
+    veil.id = "hubVeil";
+    veil.setAttribute("aria-hidden", "true");
+    veil.style.cssText =
+      "position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;pointer-events:none;" +
+      "opacity:0;color:#f2e6c8;font-family:inherit;font-weight:700;font-size:22px;letter-spacing:.04em;text-shadow:0 2px 8px #000;";
+    document.body.appendChild(veil);
+  }
+  veil.textContent = name;
+  veil.style.transition = "none";
+  veil.style.background = dark ? "#05060d" : "transparent";
+  veil.style.opacity = "1";
+  void veil.offsetWidth; // restart the CSS transition
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  veil.style.transition = calm ? "opacity .2s linear .5s" : "opacity .6s ease .35s";
+  veil.style.opacity = "0";
 }
 
 /** One frame of walking. Called from the hub world's update(), only while G.state is "hub". */
@@ -62,7 +90,16 @@ function tick(dt) {
     }
   }
   setNear(hit);
-  const c = camTarget(p, VW, VH, WORLD_W), k = Math.min(1, dt * 6);
+  const r = roomAt(p.x, p.gy, room);
+  const c = roomCam(p, r, VW, VH);
+  if (r !== room) {
+    room = r; // he went through an exit: cut to the new room under the fade
+    G.cam = c.x;
+    G.camY = c.y;
+    announce(room.name, true);
+    return;
+  }
+  const k = Math.min(1, dt * 6);
   G.cam = Math.round(G.cam + (c.x - G.cam) * k);
   G.camY = Math.round((G.camY ?? c.y) + (c.y - (G.camY ?? c.y)) * k);
 }
@@ -100,7 +137,8 @@ export async function enterHub() {
   setStatus("");
   const p = createPlayer(CLASSES.warden, {}); // only the body is used here; the class matters in a run
   placeHero(p, lastX, lastY);
-  const c = camTarget(p, VW, VH, WORLD_W);
+  room = roomAt(p.x, p.gy, null); // the room he stands in, with no bias from the last one
+  const c = roomCam(p, room, VW, VH);
   Object.assign(G, {
     state: "hub", home: "hub", world, player: p,
     enemies: [], runs: [], fxs: [], shots: [], missiles: [], zones: [],
@@ -111,6 +149,7 @@ export async function enterHub() {
   setNear(null);
   document.body.classList.add("hub"); // game.css / hub.css hide the run HUD and the attack buttons in the hub
   show(null);
+  announce(room.name, false);
 }
 
 function leave() {
