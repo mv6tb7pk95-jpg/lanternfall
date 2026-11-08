@@ -5,39 +5,33 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#07060d">
 <title>Lanternfall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap">
 <link rel="stylesheet" href="game.css">
 <link rel="stylesheet" href="loadout.css">
 <link rel="stylesheet" href="hub.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body>
 
-<!-- the game view: the canvas and everything drawn over it share one box, so they always line up -->
 <div id="stage">
   <canvas id="view"></canvas>
-
   <div id="hud">
     <div class="hp"><i id="hpFill"></i><span id="hpTxt"></span></div>
-    <div class="info">WAVE <span id="wave">0</span> &nbsp;·&nbsp; KILLS <span id="kills">0</span></div>
+    <div class="info">Wave <span id="wave">0</span> &nbsp; Kills <span id="kills">0</span> &nbsp; Shards <span id="shardCt">0</span></div>
     <div id="chName"></div>
   </div>
-
   <div id="boss" hidden>
     <div id="bossName"></div>
     <div class="bb"><i id="bossFill"></i></div>
   </div>
-
   <div id="toast" hidden></div>
 </div>
 
 <div id="rot">Turn your device sideways for a bigger view</div>
-
-<!-- hub: "Enter <building>" button, shown when the hero stands at a building (hub.js) -->
 <button id="hubPrompt" hidden></button>
-
-<!-- left thumb (touch screens): drag sideways to walk, push up to jump -->
 <div id="stick" aria-label="Move stick"><div id="knob"></div></div>
 
-<!-- right thumb: skill buttons on top; Jump and Attack below (the Jump and Attack buttons show on touch screens only) -->
 <div id="acts">
   <div id="skills"></div>
   <div id="row">
@@ -46,85 +40,89 @@
   </div>
 </div>
 
-<!-- main menu -->
-<div id="menu" class="screen">
-  <h1>LANTERNFALL</h1>
-  <p class="sub">Shards: <span id="mShards">0</span> &nbsp;·&nbsp; <span id="mProg"></span></p>
-  <div class="col">
-    <button class="btn" id="btnHub">ENTER THE GATEHOUSE</button>
-    <button class="btn" id="btnStory">STORY MODE</button>
-    <button class="btn" id="btnEndless">ENDLESS</button>
-    <button class="btn" id="btnLoadout">LOADOUT</button>
-    <button class="btn" id="btnForge">LANTERN FORGE</button>
-  </div>
-  <div class="help">Keyboard: ← → or A D move · Space jump · J / K / Z attack (hold) · 1 2 3 4 skills · E enter a building<br>Touch: drag the stick to walk, push it up to jump. Progress is saved in this browser only.</div>
-</div>
+<!-- right sidebar: shown in the hub and over menu screens, hidden during a run -->
+<nav id="side" aria-label="Game menu">
+  <button data-p="gear" aria-label="Gear" title="Gear"><span>🎒</span><small>Gear</small></button>
+  <button data-p="cls" aria-label="Class and skills" title="Class and skills"><span>⚔️</span><small>Class</small></button>
+  <button data-p="shop" aria-label="Shop" title="Shop"><span>🛒</span><small>Shop</small></button>
+  <button data-p="quests" aria-label="Quests and hunts" title="Quests and hunts"><span>📜</span><small>Hunts</small></button>
+  <button data-p="settings" aria-label="Settings" title="Settings"><span>⚙️</span><small>Settings</small></button>
+</nav>
 
-<!-- the Dungeon Gate in the hub -->
 <div id="gate" class="screen" hidden>
-  <h1>DUNGEON GATE</h1>
+  <h1>Dungeon Gate</h1>
   <p class="sub">Where do you want to go?</p>
   <div class="col">
-    <button class="btn" id="gStory">STORY MODE</button>
-    <button class="btn" id="gEndless">ENDLESS</button>
+    <button class="btn" id="gStory">Story mode</button>
+    <button class="btn" id="gEndless">Endless</button>
   </div>
-  <button class="btn small" id="gBack">BACK TO THE SQUARE</button>
+  <button class="btn small" id="gBack">Back to the square</button>
 </div>
 
-<!-- the Party Board in the hub: a placeholder until the multiplayer phase -->
 <div id="party" class="screen" hidden>
-  <h2>PARTY BOARD</h2>
+  <h2>Party Board</h2>
   <p class="sub">Co-op is not open yet</p>
-  <div class="fbox">
-    This board will list parties looking for members, so you can gather friends before a dungeon run.<br>
-    It needs an online room server, which is built in the last phase. Until then you play alone.
-  </div>
-  <button class="btn small" id="pBack">BACK TO THE SQUARE</button>
+  <div class="fbox">This board will list parties looking for members. It needs an online room server, which is built in the last phase. Until then you play alone.</div>
+  <button class="btn small" id="pBack">Back to the square</button>
 </div>
 
-<!-- story: chapter list -->
+<div id="quests" class="screen" hidden>
+  <h2>Hunts and quests</h2>
+  <p class="sub" id="qStory"></p>
+  <div id="qList"></div>
+  <button class="btn small" id="qBack">Back to the square</button>
+</div>
+
+<div id="settings" class="screen" hidden>
+  <h2>Settings</h2>
+  <p class="sub">The game has no sound yet, so there is nothing to set for audio.</p>
+  <div class="fbox">
+    Keyboard: arrows or A D walk, Space jumps, J K Z attack (hold), 1 to 4 skills, E enters a door.<br>
+    Hub: Up or E enters a door, Up and Down climb ropes, Down and Jump drops through a platform.<br>
+    Touch: drag the stick to walk, push it up or down to climb, tap Jump and ATK.<br>
+    Progress is saved in this browser only.
+  </div>
+  <div class="col">
+    <button class="btn" id="setHub">Return to the square</button>
+    <button class="btn" id="setTitle">Back to the title</button>
+  </div>
+</div>
+
 <div id="chapters" class="screen" hidden>
-  <h1>STORY</h1>
+  <h1>Story</h1>
   <p class="sub">Choose a chapter</p>
   <div id="chList"></div>
-  <button class="btn small" id="chBack">BACK</button>
+  <button class="btn small" id="chBack">Back</button>
 </div>
 
-<!-- class select -->
 <div id="select" class="screen" hidden>
-  <h1>LANTERNFALL</h1>
+  <h1>Lanternfall</h1>
   <p class="sub" id="selSub">Choose your lantern-bearer</p>
   <div id="cards"></div>
   <p class="sub" id="selGear"></p>
-  <button class="btn small" id="selBack">BACK</button>
+  <button class="btn small" id="selBack">Back</button>
 </div>
 
-<!-- the Lantern Forge: two separate banners. Elements with class "fe" belong to the Equipment tab, "fb" to the Skill Books tab;
-     forge.js shows one set and hides the other. -->
 <div id="forge" class="screen" hidden>
-  <h2>LANTERN FORGE</h2>
-  <p class="sub">Shards: <b id="fShards">0</b> &nbsp;·&nbsp; <span id="fCount"></span></p>
+  <h2>Lantern Forge</h2>
+  <p class="sub">Shards: <b id="fShards">0</b> &nbsp; <span id="fCount"></span></p>
   <div id="fTabs" style="display:flex;gap:8px;justify-content:center;margin-bottom:10px">
-    <button class="tab on" id="fTabEq">EQUIPMENT</button>
-    <button class="tab" id="fTabBk">SKILL BOOKS</button>
+    <button class="tab on" id="fTabEq">Equipment</button>
+    <button class="tab" id="fTabBk">Skill books</button>
   </div>
-
-  <!-- Equipment banner: weapons and accessories -->
   <div class="fbox fe">
     <b>Odds:</b> <span id="fOdds"></span><br>
     <span id="fPity"></span><br>
     Shards are earned by playing. There is no real money in this game.
   </div>
   <div class="row fe">
-    <button class="btn" id="pull1">PULL ×1</button>
-    <button class="btn" id="pull10">PULL ×10</button>
+    <button class="btn" id="pull1">Pull ×1</button>
+    <button class="btn" id="pull10">Pull ×10</button>
   </div>
   <div id="fMsg" class="fe"></div>
   <div class="grid fe" id="fResults"></div>
   <div class="fbox fe"><b>Equipped:</b> <span id="fEquip"></span></div>
   <div class="grid fe" id="fInv"></div>
-
-  <!-- Skill Books banner: skill books only -->
   <div class="fbox fb" hidden>
     <b>Odds:</b> <span id="bOdds"></span><br>
     <div id="bPool"></div>
@@ -132,59 +130,59 @@
     Shards are earned by playing. There is no real money in this game.
   </div>
   <div class="row fb" hidden>
-    <button class="btn" id="bPull1">PULL ×1</button>
-    <button class="btn" id="bPull10">PULL ×10</button>
+    <button class="btn" id="bPull1">Pull ×1</button>
+    <button class="btn" id="bPull10">Pull ×10</button>
   </div>
   <div id="bMsg" class="fb" hidden style="color:#ff9a8a;font-size:12px;min-height:16px;margin:4px 0"></div>
   <div class="grid fb" id="bResults" hidden></div>
   <div class="fbox fb" hidden><b>Skill book collection:</b> books you have not found yet are dimmed.</div>
   <div class="grid fb" id="bOwned" hidden></div>
-
-  <button class="btn small" id="fBack">BACK</button>
+  <button class="btn small" id="fBack">Back</button>
   <div style="height:24px"></div>
 </div>
 
-<!-- skill loadout: pick up to 4 skills per class (starter skills and the books you pulled in the Forge) -->
 <div id="loadout" class="screen" hidden>
-  <h2>LOADOUT</h2>
+  <h2>Class and skills</h2>
   <p class="sub">Choose the skills each class takes into a run</p>
   <div id="lTabs"></div>
   <div id="lSlots"></div>
   <div id="lMsg"></div>
   <div class="grid" id="lPool"></div>
-  <button class="btn small" id="lBack">BACK</button>
+  <button class="btn small" id="lBack">Back</button>
   <div style="height:24px"></div>
 </div>
 
-<!-- story dialogue -->
 <div id="dlg" hidden>
   <div id="dWho"></div>
   <div id="dTxt"></div>
   <div id="dHint"></div>
 </div>
 
-<!-- game over / chapter cleared -->
 <div id="over" class="screen" hidden>
-  <h1 id="overTitle">YOU FELL</h1>
+  <h1 id="overTitle">You fell</h1>
   <div id="overTxt"></div>
   <div class="row">
-    <button class="btn" id="retry">TRY AGAIN</button>
-    <button class="btn" id="nextCh" hidden>NEXT CHAPTER</button>
-    <button class="btn" id="toMenu">MENU</button>
+    <button class="btn" id="retry">Try again</button>
+    <button class="btn" id="nextCh" hidden>Next chapter</button>
+    <button class="btn" id="toMenu">Back to the square</button>
+  </div>
+</div>
+
+<!-- title screen: shown first; Play enters the hub (title.js) -->
+<div id="title">
+  <canvas id="titleArt"></canvas>
+  <div class="tc">
+    <h1>Lanternfall</h1>
+    <button id="play">Play</button>
   </div>
 </div>
 
 <div id="status" hidden></div>
 
-<!-- Error display. main.js calls window.__lfShow(message) for any failure. -->
 <script>
   window.__lfShow = function (msg) {
     var box = document.getElementById("err");
-    if (!box) {
-      box = document.createElement("div");
-      box.id = "err";
-      document.body.appendChild(box);
-    }
+    if (!box) { box = document.createElement("div"); box.id = "err"; document.body.appendChild(box); }
     box.textContent = (box.textContent ? box.textContent + "\n\n" : "") + msg;
     var s = document.getElementById("status");
     if (s) s.hidden = true;
@@ -198,7 +196,6 @@
 </script>
 
 <script type="module">
-  // Dynamic import so a failed module load (a typo, a missing file, no internet for jsDelivr) shows in the red box.
   import("./src/game/main.js").catch(function (e) {
     window.__lfShow("Could not load src/game/main.js\n" + ((e && (e.stack || e.message)) || e));
   });
