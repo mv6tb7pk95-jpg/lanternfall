@@ -1,7 +1,8 @@
 // Lanternfall presence. Hub: we auto-join the shared Hub channel and draw EVERY player in our hub room (nametag, class gem, health).
-// Party: the left-side panel (#pHud) still shows only our party room. Hunts use the party room (hunt sync comes later).
+// Party: the left-side panel (#pHud) shows our party room. In a shared hunt the party members are drawn on the hunt map too.
 //   presenceTick()          every frame (hud.js): connect, send our state, smooth the others, update the panel
 //   drawRemotes(f, roomId)  the hub's drawProps (hub.js): draws the other heroes in that room
+//   drawHuntMates(f)        a shared hunt: the other party members and a nametag for every hero (run.js calls it through coop.js)
 import { G } from "./state.js";
 import { net, hub, connected, hubConnected, isHost, getName, relayUrl, sendState, sendHubState, hubAway, joinHub, stepRemotes } from "./net.js";
 import { drawPlayer } from "./entities.js";
@@ -9,6 +10,7 @@ import { pxRect, hex } from "./px.js";
 import { GY } from "./world.js";
 import { CLASSES } from "./skills.js";
 import { ROOMS } from "./fieldmaps.js";
+import { setMates } from "./coop.js";
 
 const MAX_DRAW = 14; // at most this many other heroes are drawn (the nearest ones)
 
@@ -62,10 +64,11 @@ function sendSelf(now) {
   }
 }
 
-// ---------------------------------------------------------------- the others, drawn in the hub
+// ---------------------------------------------------------------- the others, drawn in the hub or on the hunt map
 const bodies = new Map();
-const crowd = () => (hubConnected() ? hub.players : net.players);
-const youId = () => (hubConnected() ? hub.you : net.you);
+const hunting = () => !!G.coop && connected(); // a shared hunt: the others are our party room, not the hub channel
+const crowd = () => (hunting() ? net.players : hubConnected() ? hub.players : net.players);
+const youId = () => (hunting() ? net.you : hubConnected() ? hub.you : net.you);
 
 function bodyOf(p) {
   let b = bodies.get(p.id);
@@ -184,6 +187,19 @@ export function drawRemotes(f, roomId) {
   if (me && roomId === G.roomId) tag(f, getName(), me.x, (me.gy ?? GY) + me.y, "me", me.hp / me.maxHp, G.key);
 }
 
+/** A shared hunt: the other party members standing in this hunt (same place id as coop.js), then our own nametag. */
+function drawHuntMates(f) {
+  const c = G.coop, me = G.player;
+  if (!c || !c.room || !connected()) return;
+  const now = performance.now();
+  for (const p of net.players.values()) {
+    if (p.id === net.you || !p.seen || p.r !== c.room || now - p.t > 4000 || !bodies.has(p.id)) continue;
+    drawPlayer(f, bodies.get(p.id));
+    tag(f, p.name, p.vx, p.vy, p.id === net.host ? "host" : "party", p.hp / p.mh, p.cls);
+  }
+  if (me) tag(f, getName(), me.x, GY + me.y, "me", me.hp / me.maxHp, G.key); // our hero is drawn right after this
+}
+
 // ---------------------------------------------------------------- the party panel (left side), party room only
 const CSS = `
 #pHud{position:fixed;left:max(8px,env(safe-area-inset-left));top:50%;transform:translateY(-50%);z-index:15;width:148px;display:flex;flex-direction:column;gap:6px;pointer-events:none;font-family:"Pixelify Sans",ui-monospace,Menlo,Consolas,monospace}
@@ -282,11 +298,16 @@ function updatePanel() {
   }
 }
 
-let lastT = performance.now(), panelOn = false, retryAt = 0, fails = 0;
+let lastT = performance.now(), panelOn = false, retryAt = 0, fails = 0, matesSet = false;
 
 export function presenceTick() {
   const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
+  // registered here, not at load time: coop.js and this file import each other through ui.js, so a call at load could run too early
+  if (!matesSet) {
+    matesSet = true;
+    setMates(drawHuntMates);
+  }
   // entering the hub joins the shared channel by itself (retries with a growing pause if the server is down)
   if (G.state === "hub" && !hubConnected() && relayUrl() && now >= retryAt) {
     retryAt = now + Math.min(30000, 3000 * 2 ** fails);
