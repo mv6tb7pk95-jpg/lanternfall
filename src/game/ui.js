@@ -2,7 +2,7 @@
 import { $ } from "./state.js";
 export { hud } from "./hud.js";
 
-const SCREENS = ["chapters", "select", "forge", "loadout", "gate", "party", "quests", "settings", "over"];
+const SCREENS = ["chapters", "select", "forge", "shop", "loadout", "gate", "party", "quests", "settings", "over"];
 
 /** Show one full-screen panel and hide the others. show(null) hides all of them. */
 export function show(id) {
