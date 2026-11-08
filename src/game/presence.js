@@ -1,34 +1,23 @@
-// Lanternfall: who else is here. Shows the other party members and keeps our own state flowing to them.
-//
-//   presenceTick()          called every frame by hud.js. Sends our state (net.js), smooths the others, updates the party panel.
-//   drawRemotes(f, roomId)  called by the hub's drawProps (hub.js). Draws the other heroes standing in that room, with nametags.
-//
-// What is shown:
-//   in the hub   the other heroes who are in the same room (they use the same skeleton hero as ours), a nametag and a small
-//                health bar above each one. Our own nametag is drawn too.
-//   party panel  a column on the left side of the screen (#pHud, built here) with a badge, name, class, place and health bar for
-//                each member. It shows while connected to a party room, in the hub and during a run.
-// Not yet: in a hunting ground the other heroes are not drawn (that comes with the hunt sync), and attack / skill poses of the
-// others are drawn as standing. Only idle, run, jump and climb are drawn.
-//
-// The state we send: { x, y (feet, in room pixels), d (1 or -1), a (idle run jump climb attack skill), hp, mh, c (class key), r (place) }.
-// r is the hub room id ("camp", "catacombs", ...) or "h:<hunt>" or "run". It is sent only when something changed, plus once a second.
+// Lanternfall presence. Hub: we auto-join the shared Hub channel and draw EVERY player in our hub room (nametag, class gem, health).
+// Party: the left-side panel (#pHud) still shows only our party room. Hunts use the party room (hunt sync comes later).
+//   presenceTick()          every frame (hud.js): connect, send our state, smooth the others, update the panel
+//   drawRemotes(f, roomId)  the hub's drawProps (hub.js): draws the other heroes in that room
 import { G } from "./state.js";
-import { net, connected, isHost, sendState, stepRemotes } from "./net.js";
+import { net, hub, connected, hubConnected, isHost, getName, relayUrl, sendState, sendHubState, hubAway, joinHub, stepRemotes } from "./net.js";
 import { drawPlayer } from "./entities.js";
 import { pxRect, hex } from "./px.js";
 import { GY } from "./world.js";
 import { CLASSES } from "./skills.js";
 import { ROOMS } from "./fieldmaps.js";
 
-// ---------------------------------------------------------------- our own place and state
-/** Where we are right now: the hub room, a hunt, or a run. */
+const MAX_DRAW = 14; // at most this many other heroes are drawn (the nearest ones)
+
 function here() {
   const p = G.player;
   if (!p) return null;
-  if (G.world && G.world.vertical) return { x: p.x, y: (p.gy ?? GY) + p.y, r: G.roomId || "" }; // the hub (feet y is gy + the jump offset)
+  if (G.world && G.world.vertical) return { x: p.x, y: (p.gy ?? GY) + p.y, r: G.roomId || "", hub: !!G.roomId };
   const h = G.mode === "hunt" && G.hunt ? "h:" + String(G.hunt.id || G.hunt.key || G.hunt.title).replace(/[^A-Za-z0-9]/g, "").slice(0, 10) : "run";
-  return { x: p.x, y: GY + p.y, r: h };
+  return { x: p.x, y: GY + p.y, r: h, hub: false };
 }
 
 function animOf(p) {
@@ -40,20 +29,43 @@ function animOf(p) {
   return "idle";
 }
 
-let lastSig = "", lastAt = 0;
+// ---------------------------------------------------------------- sending (party and hub each have their own rate gate)
+const gateP = { sig: "", at: 0 }, gateH = { sig: "", at: 0 };
+const due = (g, sig, now, min, hb) => {
+  if (now - g.at < min || (sig === g.sig && now - g.at < hb)) return false;
+  g.sig = sig;
+  g.at = now;
+  return true;
+};
+let hubIn = false;
+
 function sendSelf(now) {
   const p = G.player, h = here();
-  if (!p || !h || now - lastAt < 70) return;
+  if (!p || !h) return;
   const s = { x: Math.round(h.x), y: Math.round(h.y), d: p.face < 0 ? -1 : 1, a: animOf(p), hp: Math.ceil(Math.max(0, p.hp)), mh: p.maxHp, c: G.key || "warden", r: h.r };
   const sig = [s.x, s.y, s.d, s.a, s.hp, s.mh, s.c, s.r].join("|");
-  if (sig === lastSig && now - lastAt < 1000) return; // nothing changed: only a heartbeat once a second
-  lastSig = sig;
-  lastAt = now;
-  sendState(s);
+  if (connected() && due(gateP, sig, now, 70, 1000)) sendState(s);
+  if (!hubConnected()) {
+    gateH.sig = "";
+    hubIn = false;
+    return;
+  }
+  if (h.hub) {
+    hubIn = true;
+    s.pt = (net.room && net.room.id) || "";
+    // about 12 per second while someone is in our room, one every 2 s when we are alone (saves relay requests)
+    if (due(gateH, sig + s.pt, now, 80, hub.near ? 1000 : 2000)) sendHubState(s);
+  } else if (hubIn) {
+    hubIn = false; // a hunt or run started: leave the hub room
+    gateH.sig = "";
+    hubAway();
+  }
 }
 
 // ---------------------------------------------------------------- the others, drawn in the hub
-const bodies = new Map(); // player id -> a hero object that entities.js drawPlayer() can draw
+const bodies = new Map();
+const crowd = () => (hubConnected() ? hub.players : net.players);
+const youId = () => (hubConnected() ? hub.you : net.you);
 
 function bodyOf(p) {
   let b = bodies.get(p.id);
@@ -65,13 +77,14 @@ function bodyOf(p) {
 }
 
 function advance(dt) {
-  for (const id of [...bodies.keys()]) if (!net.players.has(id)) bodies.delete(id);
-  for (const p of net.players.values()) {
-    if (p.id === net.you || !p.seen) continue;
+  const src = crowd();
+  for (const id of [...bodies.keys()]) if (!src.has(id)) bodies.delete(id);
+  for (const p of src.values()) {
+    if (p.id === youId() || !p.seen) continue;
     const b = bodyOf(p);
     if (b.r !== p.r) {
       b.r = p.r;
-      p.vx = p.x; // he changed room: no sliding across the map
+      p.vx = p.x;
       p.vy = p.y;
     }
     const dy = Math.abs(p.y - p.vy);
@@ -82,12 +95,11 @@ function advance(dt) {
     b.moving = p.a === "run";
     if (b.moving) b.walk += dt;
     b.climb = p.a === "climb" ? true : null;
-    if (b.climb && dy > 0.5) b.climbT += dt; // the climbing pose moves only while he moves
-    b.y = p.a === "jump" ? -2 : 0; // -2 gives the jump pose (entities.js uses it below -1)
+    if (b.climb && dy > 0.5) b.climbT += dt;
+    b.y = p.a === "jump" ? -2 : 0;
   }
 }
 
-// a 3x5 pixel font for the nametags (my own tuning; lower case is drawn as capitals)
 const GL = {
   A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110", E: "111100110100111",
   F: "111100110100100", G: "011100101101011", H: "101101111101101", I: "111010010010111", J: "001001001101010",
@@ -99,9 +111,31 @@ const GL = {
   9: "111101111001110", "-": "000000111000000", _: "000000000000111", ".": "000000000000010", "?": "110001010000010", " ": "000000000000000",
 };
 const C = {
-  edge: hex("#0a0c12"), plate: hex("#161b27"), gold: hex("#c9993a"), steel: hex("#5a647c"),
+  edge: hex("#0a0c12"), plate: hex("#161b27"), gold: hex("#c9993a"), steel: hex("#5a647c"), dim: hex("#9aa4b8"),
   cream: hex("#f2e6c8"), host: hex("#f0bd4e"), me: hex("#9fd0ff"), back: hex("#2a1216"), fill: hex("#5fbf6a"), low: hex("#d8493e"),
 };
+// tag kinds: me (light blue), host / party (gold plate), other (steel plate, the rest of the hub)
+const KIND = { me: [C.steel, C.me], host: [C.gold, C.host], party: [C.gold, C.cream], other: [C.steel, C.dim] };
+
+const hue = (k) => {
+  let h = 0;
+  for (const ch of k || "?") h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+};
+const gems = new Map();
+function gem(k) {
+  let c = gems.get(k);
+  if (c === undefined) {
+    const h = hue(k), s = 0.55, l = 0.55, a = s * Math.min(l, 1 - l);
+    const f = (n) => {
+      const q = (n + h / 30) % 12;
+      return Math.round(255 * (l - a * Math.max(-1, Math.min(q - 3, 9 - q, 1)))).toString(16).padStart(2, "0");
+    };
+    c = hex("#" + f(0) + f(8) + f(4));
+    gems.set(k, c);
+  }
+  return c;
+}
 
 function text(f, s, x, y, c) {
   for (let i = 0; i < s.length; i++) {
@@ -110,35 +144,47 @@ function text(f, s, x, y, c) {
   }
 }
 
-/** A nametag with a small health bar, centred above feet at (cx, fy) in room pixels. */
-function tag(f, name, cx, fy, host, mine, frac) {
+function tag(f, name, cx, fy, kind, frac, cls) {
+  const [bd, tc] = KIND[kind] || KIND.other;
   const s = String(name || "?").toUpperCase().slice(0, 12), w = s.length * 4 - 1, pw = w + 4;
   const x0 = Math.round(cx - pw / 2), y0 = Math.round(fy) - 56;
-  pxRect(f, x0 - 1, y0 - 1, pw + 2, 9, mine ? C.steel : C.gold);
+  if (cls) {
+    pxRect(f, x0 - 6, y0 - 1, 5, 9, C.edge); // class gem: its colour comes from the class key
+    pxRect(f, x0 - 5, y0, 3, 7, gem(cls));
+  }
+  pxRect(f, x0 - 1, y0 - 1, pw + 2, 9, bd);
   pxRect(f, x0, y0, pw, 7, C.plate);
-  text(f, s, x0 + 2, y0 + 1, host ? C.host : mine ? C.me : C.cream);
+  text(f, s, x0 + 2, y0 + 1, tc);
   frac = Math.max(0, Math.min(1, frac));
   pxRect(f, x0, y0 + 9, pw, 3, C.edge);
   pxRect(f, x0 + 1, y0 + 10, pw - 2, 1, C.back);
   pxRect(f, x0 + 1, y0 + 10, Math.round((pw - 2) * frac), 1, frac < 0.3 ? C.low : C.fill);
 }
 
-/** Draw the other party members standing in hub room roomId, and the nametags (ours too). */
 export function drawRemotes(f, roomId) {
-  if (!connected()) return;
-  const now = performance.now();
-  for (const p of net.players.values()) {
-    if (p.id === net.you || !p.seen || p.r !== roomId || now - p.t > 4000) continue; // not here, or silent for 4 s
-    const b = bodies.get(p.id);
-    if (!b) continue;
-    drawPlayer(f, b);
-    tag(f, p.name, p.vx, p.vy, p.id === net.host, false, p.hp / p.mh);
+  const onHub = hubConnected();
+  if (!onHub && !connected()) return;
+  const now = performance.now(), me = G.player, list = [];
+  const hostP = !onHub || !net.host ? null : net.players.get(net.host);
+  for (const p of crowd().values()) {
+    if (p.id !== youId() && p.seen && p.r === roomId && now - p.t < 4000 && bodies.has(p.id)) list.push(p);
   }
-  const me = G.player, you = net.players.get(net.you);
-  if (me && roomId === G.roomId) tag(f, you ? you.name : "YOU", me.x, (me.gy ?? GY) + me.y, isHost(), true, me.hp / me.maxHp);
+  if (me && list.length > MAX_DRAW) {
+    list.sort((a, b) => Math.abs(a.vx - me.x) - Math.abs(b.vx - me.x));
+    list.length = MAX_DRAW;
+  }
+  for (const p of list) {
+    let kind;
+    if (!onHub) kind = p.id === net.host ? "host" : "party";
+    else if (p.pt && net.room && p.pt === net.room.id) kind = hostP && hostP.name === p.name ? "host" : "party";
+    else kind = "other";
+    drawPlayer(f, bodies.get(p.id));
+    tag(f, p.name, p.vx, p.vy, kind, p.hp / p.mh, p.cls);
+  }
+  if (me && roomId === G.roomId) tag(f, getName(), me.x, (me.gy ?? GY) + me.y, "me", me.hp / me.maxHp, G.key);
 }
 
-// ---------------------------------------------------------------- the party panel (left side)
+// ---------------------------------------------------------------- the party panel (left side), party room only
 const CSS = `
 #pHud{position:fixed;left:max(8px,env(safe-area-inset-left));top:50%;transform:translateY(-50%);z-index:15;width:148px;display:flex;flex-direction:column;gap:6px;pointer-events:none;font-family:"Pixelify Sans",ui-monospace,Menlo,Consolas,monospace}
 #pHud[hidden]{display:none}
@@ -159,7 +205,7 @@ const CSS = `
 `;
 
 let panel = null, structSig = "";
-const rows = new Map(); // player id -> { el, pc, pb, fill, txt, last... }
+const rows = new Map();
 
 const mk = (tagName, cls, txt) => {
   const e = document.createElement(tagName);
@@ -183,11 +229,6 @@ function ensurePanel() {
 
 const classKey = (p) => (p.id === net.you ? G.key || p.cls : p.cls) || "";
 const classLabel = (k) => (CLASSES[k] && CLASSES[k].name) || "";
-const hue = (k) => {
-  let h = 0;
-  for (const ch of k || "?") h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
-};
 const where = (r) => (!r ? "" : r.startsWith("h:") ? "On a hunt" : r === "run" ? "In a run" : (ROOMS[r] && ROOMS[r].name) || "");
 
 function build(list) {
@@ -241,21 +282,26 @@ function updatePanel() {
   }
 }
 
-let lastT = performance.now(), panelOn = false;
+let lastT = performance.now(), panelOn = false, retryAt = 0, fails = 0;
 
-/** Once per frame (hud.js calls it). Does nothing, cheaply, when we are not in a party room. */
 export function presenceTick() {
   const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
-  const on = connected() && (G.state === "hub" || G.state === "play");
-  if (!connected()) {
-    structSig = "";
-    bodies.clear();
-  } else {
+  // entering the hub joins the shared channel by itself (retries with a growing pause if the server is down)
+  if (G.state === "hub" && !hubConnected() && relayUrl() && now >= retryAt) {
+    retryAt = now + Math.min(30000, 3000 * 2 ** fails);
+    joinHub(G.key || "warden").then((ok) => {
+      fails = ok ? 0 : Math.min(fails + 1, 4);
+    });
+  }
+  if (!connected()) structSig = "";
+  if (!connected() && !hubConnected()) bodies.clear();
+  else {
     stepRemotes(dt);
     advance(dt);
     sendSelf(now);
   }
+  const on = connected() && (G.state === "hub" || G.state === "play");
   if (on) updatePanel();
   if (on !== panelOn) {
     panelOn = on;
