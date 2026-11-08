@@ -1,5 +1,6 @@
 // Lanternfall: menus. Title -> Play -> the hub. The right sidebar opens Gear, Class, Shop, Quests, Party and Settings.
 // Story / Endless are reached through the Dungeon Gate; a hunt door or the Quests panel opens the class select.
+// A shared hunt is started from the Party Board (party-ui.js), not from here.
 import { $, G, fail } from "./state.js";
 import { show, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
@@ -121,7 +122,14 @@ export function initMenu() {
   $("selBack").addEventListener("click", () => (pick.hunt ? (pick.viaQuests ? openQuests() : goBack()) : pick.chapter ? openChapters() : show("gate")));
   $("setTitle").addEventListener("click", () => { show(null); showTitle(); });
 
-  $("retry").addEventListener("click", () => beginRun(G.key, G.chapter, G.hunt).catch(fail));
+  $("retry").addEventListener("click", () => {
+    // G.hunt after a shared hunt is the party-sized copy, and a retry would start it alone: go back and start it again from the Party Board
+    if (G.coop) {
+      toast("Start the next shared hunt from the Party Board.", 3);
+      return goBack();
+    }
+    beginRun(G.key, G.chapter, G.hunt).catch(fail);
+  });
   $("nextCh").addEventListener("click", () => {
     const n = G.chapter && CHAPTERS.find((c) => c.id === G.chapter.id + 1);
     if (n) beginRun(G.key, n).catch(fail);
