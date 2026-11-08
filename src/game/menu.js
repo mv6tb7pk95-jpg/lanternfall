@@ -1,4 +1,4 @@
-// Lanternfall: menus. Title -> Play -> the hub. The right sidebar opens Gear, Class, Shop, Quests and Settings.
+// Lanternfall: menus. Title -> Play -> the hub. The right sidebar opens Gear, Class, Shop, Quests, Party and Settings.
 // Story / Endless are reached through the Dungeon Gate; a hunt door or the Quests panel opens the class select.
 import { $, G, fail } from "./state.js";
 import { show, toast } from "./ui.js";
@@ -10,6 +10,7 @@ import { itemById } from "./gacha.js";
 import { initForge, renderForge } from "./forge.js";
 import { initShop, renderShop } from "./shop-ui.js";
 import { initLoadout, renderLoadout } from "./loadout-ui.js";
+import { initParty, renderParty } from "./party-ui.js";
 import { beginRun } from "./run.js";
 import { enterHub, initHub, hubActions, leave as leaveHub } from "./hub.js";
 import { initTitle, showTitle } from "./title.js";
@@ -58,6 +59,7 @@ function openSelect(chapter, hunt = null, viaQuests = false) {
 function openForge() { renderForge(); show("forge"); }
 function openShop() { renderShop(); show("shop"); }
 function openLoadout() { renderLoadout(); show("loadout"); }
+function openParty() { renderParty(); show("party"); }
 
 function openQuests() {
   const s = loadSave(), list = $("qList");
@@ -81,7 +83,7 @@ function openQuests() {
 function side(id) {
   if (G.loading || G.state === "play") return;
   if (G.state === "hub") leaveHub();
-  ({ gear: openForge, cls: openLoadout, shop: openShop, quests: openQuests, settings: () => show("settings") })[id]();
+  ({ gear: openForge, cls: openLoadout, shop: openShop, quests: openQuests, party: openParty, settings: () => show("settings") })[id]();
 }
 
 export function initMenu() {
@@ -93,6 +95,9 @@ export function initMenu() {
     $("cards").append(b);
   }
 
+  // The Party Board builds its own screen and adds its sidebar button, so it must run before the sidebar and the Back buttons are bound.
+  initParty();
+
   initTitle(goBack);
   document.querySelectorAll("#side button").forEach((b) =>
     b.addEventListener("click", () => { b.blur(); side(b.dataset.p); })
@@ -102,7 +107,7 @@ export function initMenu() {
   hubActions.shop = openShop;
   hubActions.loadout = openLoadout;
   hubActions.gate = () => show("gate");
-  hubActions.party = () => show("party");
+  hubActions.party = openParty;
   hubActions.hunt = (id) => {
     const h = HUNTS[id];
     if (!h) { toast("That hunting ground is not open yet."); return goBack(); }
