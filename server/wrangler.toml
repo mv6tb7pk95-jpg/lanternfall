@@ -1,0 +1,17 @@
+# Deploy with: cd server && npx wrangler deploy
+name = "lanternfall-relay"
+main = "relay.js"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+# The free Cloudflare plan only allows SQLite-backed Durable Objects, hence new_sqlite_classes.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room", "Lobby"]
