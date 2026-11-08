@@ -11,7 +11,15 @@ class_name = "Room"
 name = "LOBBY"
 class_name = "Lobby"
 
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
 # The free Cloudflare plan only allows SQLite-backed Durable Objects, hence new_sqlite_classes.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room", "Lobby"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Hub"]
