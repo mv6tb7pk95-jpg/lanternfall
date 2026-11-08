@@ -1,7 +1,10 @@
 // Lanternfall: draws one hub room (fieldmaps.js). The backdrop and terrain are painted once per room into a texture;
 // doors, fires and drifting lights are drawn every frame. createFieldScene(room) -> { update, drawBg, drawProps }.
+// The mood of each room comes from ambient.js (translucent mist, glints, bubbling lava, a vignette) and from real pixelfx
+// loops placed by ROOM_FX below: spirit flames over the graves, floating ice crystals in the mines, a brazier in the foundry.
 import * as PX from "./px.js";
-import { VW, VH } from "./world.js";
+import { VW, VH, tintOpts } from "./world.js";
+import { mist, motes, glints, lavaBubbles, grade } from "./ambient.js";
 
 const { createFx, hex, mix, rand, loadFx, pxRect } = PX;
 const BLK = hex("#000000"), WHT = hex("#ffffff");
@@ -11,6 +14,27 @@ const ROPE = hex("#c9a96a"), ROPE2 = hex("#8a7040"), STEEL = hex("#b8c4d0"), SLE
 const BODY = { loadout: "#6b5a8a", party: "#8a5a3a", gate: "#4a3a6a", shop: "#4f7a55", forge: "#8a3a2a" };
 const LIT0 = hex("#ffcf6a"), LIT1 = hex("#ff7a2a");
 const tex = new Map();
+
+// Real pixelfx loops per room: path, pts [x, y] (world px; y is the floor or the base of the flame), opts, tints.
+// ice-crystal floats `height` px above its point; spirit-flame floats with its base at the point; brazier stands on it.
+const ROOM_FX = {
+  catacombs: [{ path: "fire/spirit-flame", pts: [[190, 250], [360, 250], [470, 250], [270, 150]] }],
+  mines: [{ path: "ice/ice-crystal", pts: [[134, 256], [352, 204], [522, 256], [582, 152]], opts: { height: 34 }, tints: [null, "#c07aff"] }],
+  foundry: [{ path: "fire/brazier", pts: [[355, 308]] }],
+};
+
+// Translucent mist bands per room (world y of the band's middle).
+const ROOM_MIST = {
+  camp: [{ y: 262, h: 26, col: "#ffb25a", a: 22, speed: 0.4, seed: 1 }],
+  catacombs: [{ y: 246, h: 36, col: "#7fe0b0", a: 56, speed: 0.5, seed: 1 }, { y: 196, h: 24, col: "#4a7a68", a: 34, speed: 0.3, seed: 4 }],
+  mines: [{ y: 300, h: 30, col: "#7aa8ff", a: 36, speed: 0.4, seed: 2 }],
+  foundry: [{ y: 288, h: 36, col: "#ff6a2a", a: 34, speed: 0.8, seed: 3 }],
+};
+
+// Extra drifting lights (the older fireflies, snow and embers below are still drawn).
+const ROOM_MOTES = {
+  camp: [{ kind: "firefly", n: 14, x0: 240, x1: 480, y0: 120, y1: 260, seed: 61, hi: "#ffd98a", lo: "#c8782a" }],
+};
 
 function paint(room) {
   let T = tex.get(room.id);
@@ -123,11 +147,26 @@ export async function createFieldScene(room) {
     if (d.t === "torch") fxs.push({ x: d.x, y: d.y - 58, fx: createFx(torch, { x: d.x, y: d.y - 58, seed: (torch.meta.options.seed ?? 1) + i }) });
     if (d.t === "campfire") fxs.push({ x: d.x, y: d.y, fx: createFx(campfire, { x: d.x, y: d.y, seed: (campfire.meta.options.seed ?? 1) + i }) });
   });
+  // the room's own pixelfx loops; one that cannot be loaded is skipped, the room still works
+  for (const e of ROOM_FX[room.id] || []) {
+    try {
+      const mod = await loadFx(e.path);
+      e.pts.forEach(([x, y], i) =>
+        fxs.push({ x, y, fx: createFx(mod, { x, y, seed: (mod.meta.options.seed ?? 1) + i * 3, ...(e.opts || {}), ...tintOpts(mod, e.tints ? e.tints[i % e.tints.length] : null, 0.8) }) })
+      );
+    } catch (err) {
+      console.warn("room effect skipped:", e.path, err);
+    }
+  }
   const kinds = new Set(room.deco.map((d) => d.t));
   const bg = new Uint32Array(VW * VH);
-  const fly = [hex("#3f9a78"), hex("#9fffe0")], snow = [hex("#9fb4d8"), WHT], ember = [hex("#ffb347"), hex("#ff4a1a")], fog = mix(hex(room.look.light), BLK, 0.5);
+  const fly = [hex("#3f9a78"), hex("#9fffe0")], snow = [hex("#9fb4d8"), WHT], ember = [hex("#ffb347"), hex("#ff4a1a")];
+  const lavaDeco = room.deco.find((d) => d.t === "lava");
+  // twinkling glints over every painted crystal, in the crystal's own colour
+  const crystalGlints = room.deco.filter((d) => d.t === "crystal").map((d) => ({ col: d.c, pts: [[d.x - 8, d.y - 6], [d.x + 9, d.y - 10], [d.x - 2, d.y - 24], [d.x + 5, d.y - 17]] }));
+  const vig = room.id === "camp" ? 0.45 : 0.55;
   let t = 0;
-  const seen = (x, y, cx, cy) => x > cx - 40 && x < cx + VW + 40 && y > cy - 40 && y < cy + VH + 40;
+  const seen = (x, y, cx, cy) => x > cx - 60 && x < cx + VW + 60 && y > cy - 60 && y < cy + VH + 60; // an effect can be 112 px wide
   const dot = (f, x, y, cx, cy, c, s = 1) => { if (seen(x, y, cx, cy)) pxRect(f, x, y, s, s, c); };
   return {
     update(dt, cx, cy) { t += dt; for (const p of fxs) if (seen(p.x, p.y, cx, cy)) p.fx.update(dt); },
@@ -135,9 +174,12 @@ export async function createFieldScene(room) {
       cx = Math.max(0, Math.min(W - VW, cx | 0));
       cy = Math.max(0, Math.min(room.h - VH, cy | 0));
       for (let y = 0; y < VH; y++) bg.set(T.subarray((cy + y) * W + cx, (cy + y) * W + cx + VW), y * VW);
+      grade(bg, { vignette: vig });
       return bg;
     },
     drawProps(f, cx, cy, nearId) {
+      // mist first: it is translucent and only fills empty pixels, so everything below is drawn in front of it
+      for (const m of ROOM_MIST[room.id] || []) mist(f, t, m);
       for (const d of room.doors) drawDoor(f, d, t, d.id === nearId, room.look.accent);
       for (const p of fxs) if (seen(p.x, p.y, cx, cy)) p.fx.draw(f);
       for (const d of room.deco) if (d.t === "gear") {
@@ -148,7 +190,9 @@ export async function createFieldScene(room) {
       if (kinds.has("fireflies")) for (let i = 0; i < 14; i++) { const b = Math.sin(t * 2 + i * 3) > 0.2; dot(f, rand(i, 1, 21) * W + 8 * Math.sin(t * 0.6 + i), room.h * 0.3 + rand(i, 2, 22) * room.h * 0.6, cx, cy, fly[b ? 1 : 0], b ? 2 : 1); }
       if (kinds.has("snow")) for (let i = 0; i < 40; i++) dot(f, rand(i, 1, 31) * W + 6 * Math.sin(t + i), (rand(i, 2, 32) * room.h + t * (14 + rand(i, 3, 33) * 10)) % room.h, cx, cy, snow[i % 3 ? 0 : 1]);
       if (kinds.has("embers")) for (let i = 0; i < 30; i++) { const y = room.h - ((rand(i, 2, 42) * room.h + t * (20 + rand(i, 3, 43) * 18)) % room.h); dot(f, rand(i, 1, 41) * W + 5 * Math.sin(t * 2 + i), y, cx, cy, mix(ember[0], ember[1], 1 - y / room.h)); }
-      if (kinds.has("fog")) for (let i = 0; i < 20; i++) dot(f, (rand(i, 1, 51) * W + t * 6) % W, room.h - 70 + rand(i, 2, 52) * 40, cx, cy, fog, 3);
+      for (const m of ROOM_MOTES[room.id] || []) motes(f, t, m);
+      for (const g of crystalGlints) glints(f, t, g);
+      if (lavaDeco) lavaBubbles(f, t, { y: lavaDeco.y, w: W, n: 26, seed: 5 });
     },
   };
 }
