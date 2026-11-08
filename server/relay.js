@@ -1,10 +1,6 @@
-// Lanternfall relay (Cloudflare Worker + Durable Objects). It only relays messages; the host's browser runs hunts.
-//   GET /rooms  GET /create(POST)  GET /ws?room=ID   party rooms (Room) listed by Lobby
-//   GET /hub?ch=1..9   shared Hub channel (Hub, named hub_channel_N): every player in the hub sees the others in the same hub room
-// Hub messages: client hello{name,cls} | s{x,y,d,a,hp,mh,c,r,pt} | away | ping
-//               server welcome{you} | in{id,name,cls,pt,r,x,y,d,a,hp,mh} | s{id,...} | out{id} | near{n} | err{code}
-// A player only receives messages from players in the SAME hub room (spatial filter). Deploy: cd server && npx wrangler deploy
-
+// Lanternfall relay (Cloudflare Worker + Durable Objects). Routes: /rooms, /create (POST), /ws?room=ID (party Room), /hub?ch=1..9 (shared Hub).
+// Room start flow: host "start" -> every member (host too) gets {t:"start",hunt,seed,ids}. Each client answers "go" once its run begins.
+// Members without "go" get the start message again after 2.5 s and 6 s, and when they send "sync" (e.g. the tab came back to the front).
 const ORIGINS = ["https://mv6tb7pk95-jpg.github.io", "http://localhost:8000", "http://127.0.0.1:8000"];
 const HUNTS = ["grave", "hollow", "slag"];
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -41,7 +37,6 @@ export default {
       const r = await env.LOBBY.get(env.LOBBY.idFromName("main")).fetch("https://lobby/list");
       return json(await r.json());
     }
-
     if (url.pathname === "/create" && req.method === "POST") {
       let b;
       try {
@@ -58,28 +53,25 @@ export default {
       }
       return json({ error: "Could not make a room. Try again." }, 500);
     }
-
     if (url.pathname === "/ws") {
       if (req.headers.get("Upgrade") !== "websocket") return json({ error: "Expected a WebSocket." }, 426);
       const id = (url.searchParams.get("room") || "").toUpperCase();
       if (!ID_RE.test(id)) return json({ error: "Bad room code." }, 400);
       return env.ROOM.get(env.ROOM.idFromName(id)).fetch(req);
     }
-
     if (url.pathname === "/hub") {
       if (req.headers.get("Upgrade") !== "websocket") return json({ error: "Expected a WebSocket." }, 426);
       const ch = url.searchParams.get("ch") || "1";
       if (!/^[1-9]$/.test(ch)) return json({ error: "Bad channel." }, 400);
       return env.HUB.get(env.HUB.idFromName("hub_channel_" + ch)).fetch(req);
     }
-
     return json({ ok: true, service: "lanternfall-relay" });
   },
 };
 
 export class Hub {
   constructor() {
-    this.players = new Map(); // id -> { id, ws, name, cls, pt, r, st, ts }
+    this.players = new Map();
     this.seq = 0;
   }
 
@@ -170,10 +162,10 @@ export class Hub {
     if (m.t === "away") return this.leaveRoom(me);
     if (m.t !== "s") return;
     const now = Date.now();
-    if (now - me.ts < 60) return; // about 16 per second at most
+    if (now - me.ts < 60) return;
     me.ts = now;
     const r = clean(m.r, 16);
-    if (!/^[A-Za-z0-9_]{1,16}$/.test(r) || r === "run") return; // hub rooms only
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(r) || r === "run") return;
     me.st = { x: num(m.x, -200, 6000), y: num(m.y, -1000, 3000), d: m.d < 0 ? -1 : 1, a: clean(m.a, 8), hp: num(m.hp, 0, 1e6), mh: num(m.mh, 1, 1e6, 1) };
     me.cls = clean(m.c, 12);
     me.pt = ID_RE.test(String(m.pt || "")) ? m.pt : "";
@@ -204,6 +196,7 @@ export class Room {
     this.players = new Map();
     this.hostId = null;
     this.phase = "lobby";
+    this.startMsg = null;
     this.seq = 0;
     this.hb = null;
   }
@@ -225,8 +218,7 @@ export class Room {
     }
     if (url.pathname === "/ws") {
       await this.load();
-      const pair = new WebSocketPair();
-      const [client, server] = Object.values(pair);
+      const [client, server] = Object.values(new WebSocketPair());
       server.accept();
       this.listen(server);
       return new Response(null, { status: 101, webSocket: client });
@@ -296,6 +288,12 @@ export class Room {
     this.lobby("/reg", JSON.stringify({ ...this.pubInfo(), players: this.players.size, host: host ? host.name : "" }));
   }
 
+  /** Send the start message again to every member who has not answered "go" yet. */
+  resend(seed) {
+    if (this.phase !== "hunt" || !this.startMsg || this.startMsg.seed !== seed) return;
+    for (const p of this.players.values()) if (!p.go) this.tx(p, this.startMsg);
+  }
+
   hello(ws, m) {
     const i = this.info;
     const err = (c) => {
@@ -310,15 +308,11 @@ export class Room {
     if (this.players.size >= i.max) return err("full");
     if (this.phase !== "lobby") return err("started");
     const id = "p" + ++this.seq;
-    const p = { id, ws, name: clean(m.name, 16) || "Hero", cls: clean(m.cls, 12), ready: false, ts: 0, cs: 0 };
+    const p = { id, ws, name: clean(m.name, 16) || "Hero", cls: clean(m.cls, 12), ready: false, go: false, ts: 0, cs: 0 };
     this.players.set(id, p);
     if (!this.hostId || !this.players.has(this.hostId)) this.hostId = id;
     this.tx(p, {
-      t: "welcome",
-      you: id,
-      host: this.hostId,
-      room: this.pubInfo(),
-      phase: this.phase,
+      t: "welcome", you: id, host: this.hostId, room: this.pubInfo(), phase: this.phase,
       players: [...this.players.values()].map((q) => ({ id: q.id, name: q.name, cls: q.cls, ready: q.ready })),
     });
     this.all({ t: "join", p: { id, name: p.name, cls: p.cls, ready: false } }, id);
@@ -365,11 +359,28 @@ export class Room {
         this.all({ t: "room", room: this.pubInfo() });
         this.touch();
         return;
-      case "start":
-        if (!isHost || this.phase !== "lobby") return;
+      case "start": {
+        if (!isHost) return;
+        if (this.phase !== "lobby") {
+          // a repeated press: send the same start again to anyone who has not answered
+          if (this.startMsg) this.resend(this.startMsg.seed);
+          return;
+        }
         this.phase = "hunt";
-        this.all({ t: "start", hunt: this.info.hunt, seed: (Math.random() * 2147483647) | 0, ids: [...this.players.keys()] });
+        for (const p of this.players.values()) p.go = false;
+        const seed = (Math.random() * 2147483647) | 0;
+        this.startMsg = { t: "start", hunt: this.info.hunt, seed, ids: [...this.players.keys()] };
+        this.all(this.startMsg); // every member, the host too
+        setTimeout(() => this.resend(seed), 2500);
+        setTimeout(() => this.resend(seed), 6000);
         this.touch();
+        return;
+      }
+      case "go":
+        me.go = true;
+        return;
+      case "sync":
+        if (this.phase === "hunt" && this.startMsg && !me.go) this.tx(me, this.startMsg);
         return;
       case "hit": {
         if (isHost || this.phase !== "hunt") return;
@@ -388,8 +399,7 @@ export class Room {
       }
       case "end":
         if (!isHost || this.phase !== "hunt") return;
-        this.phase = "lobby";
-        for (const p of this.players.values()) p.ready = false;
+        this.toLobby();
         this.all({ t: "end", res: m.res === "win" ? "win" : "lose", kills: num(m.kills, 0, 1000) });
         this.touch();
         return;
@@ -398,17 +408,29 @@ export class Room {
     }
   }
 
+  toLobby() {
+    this.phase = "lobby";
+    this.startMsg = null;
+    for (const p of this.players.values()) p.ready = p.go = false;
+  }
+
   drop(me) {
     this.players.delete(me.id);
     if (this.players.size === 0) {
       this.close();
       return;
     }
-    if (this.hostId === me.id) {
+    const wasHost = this.hostId === me.id;
+    if (wasHost) {
       this.hostId = this.players.keys().next().value;
       this.all({ t: "host", id: this.hostId });
     }
     this.all({ t: "leave", id: me.id });
+    if (wasHost && this.phase === "hunt") {
+      // nobody can take over the monsters: end the hunt so the room does not stay stuck in "hunt"
+      this.toLobby();
+      this.all({ t: "end", res: "lose", kills: 0 });
+    }
     this.touch();
   }
 
@@ -418,6 +440,7 @@ export class Room {
     const id = this.info && this.info.id;
     this.info = null;
     this.phase = "lobby";
+    this.startMsg = null;
     try {
       await this.state.storage.deleteAll();
     } catch {}
