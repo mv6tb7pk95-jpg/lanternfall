@@ -31,6 +31,7 @@ export const CLASSES = {
     skills: [
       { id: "dash-strike", path: "moves/dash-strike", name: "Dash strike", cd: 5, dmg: 50, zone: [70, 215], free: 1.8 },
       { id: "pistol-shots", path: "moves/pistol-shots", name: "Pistol", cd: 2.5, dmg: 12, zone: [150, 215] },
+      { id: "backstab", path: "moves/dash-strike", name: "Backstab", cd: 9, dmg: 80, zone: [40, 110], free: 1.8 },
     ],
   },
   arbalist: {
@@ -38,6 +39,7 @@ export const CLASSES = {
     skills: [
       { id: "arrow-shot", path: "moves/arrow-shot", name: "Arrow", cd: 1.5, dmg: 28, zone: [140, 225] },
       { id: "rocket-launcher", path: "moves/rocket-launcher", name: "Rocket", cd: 7, dmg: 60, zone: [150, 250] },
+      { id: "piercing-bolt", path: "moves/arrow-shot", name: "Piercing bolt", cd: 6, dmg: 45, zone: [140, 260] },
     ],
   },
   lightkeeper: {
@@ -45,6 +47,7 @@ export const CLASSES = {
     skills: [
       { id: "holy-smite", path: "moves/holy-smite", name: "Holy smite", cd: 4, dmg: 40, zone: [85, 155] },
       { id: "ice-lance-throw", path: "moves/ice-lance-throw", name: "Ice lance", cd: 3.5, dmg: 34, zone: [130, 210] },
+      { id: "radiant-smite", path: "moves/holy-smite", name: "Radiant smite", cd: 8, dmg: 60, zone: [85, 155] },
     ],
   },
 };
