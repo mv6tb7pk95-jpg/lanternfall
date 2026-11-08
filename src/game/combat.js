@@ -5,12 +5,14 @@
 //   projectile skill  an act skill whose projectile is followed frame by frame and hurts the first enemy it touches
 //                     (arrow, pistol, rocket, fireball, ice lance; the flight data is in projectile.js)
 //   zone skill        one effect with no act (see zoneskill.js)
+// Co-op hunt (coop.js): a GUEST's hurtEnemy only tells the host (sendHit) and shows the hit; the host's remoteHit() applies it.
 import { G, $ } from "./state.js";
 import { GY } from "./world.js";
 import { createFx } from "./px.js";
 import { startSkill } from "./skills.js";
 import { isZoneSkill, zoneCast, spawnZone, stepZone } from "./zoneskill.js";
 import { prepared, attachFlights } from "./projectile.js";
+import { sendHit } from "./net.js";
 
 /** Start a pixelfx effect that the game owns (a hit spark, an explosion...). Capped so the page stays fast. */
 export function spawnFx(mod, o) {
@@ -40,10 +42,25 @@ export function rollDamage(base) {
 
 export function hurtEnemy(e, base, dir, push = 1) {
   if (e.dead) return;
-  e.hp -= rollDamage(base);
+  const d = rollDamage(base);
+  const proxy = !!(G.coop && !G.coop.host && e.nid); // a co-op guest: the host owns this monster
+  if (proxy) {
+    sendHit(e.nid, d);
+    e.hp = Math.max(1, e.hp - d); // only so the health bar reacts at once; the host's number replaces it
+  } else e.hp -= d;
   e.show = 2.5;
   e.kb = dir * 55 * Math.min(2.5, Math.abs(push)) * (e.boss ? 0.2 : 1); // a boss is hard to push around
   spawnFx(G.M["hit-spark"], { x: Math.round(e.x), y: GY, height: e.T.hy, flip: dir < 0, seed: 1 + (G.sparkN++ % 9) });
+  if (!proxy && e.hp <= 0) killEnemy(e);
+}
+
+/** Host only: a hit that a guest reported (coop.js). m = the monster's id, d = the damage. */
+export function remoteHit(m, d) {
+  const e = G.enemies.find((x) => x.nid === m);
+  if (!e || e.dead) return;
+  e.hp -= Math.min(3000, d);
+  e.show = 2.5;
+  spawnFx(G.M["hit-spark"], { x: Math.round(e.x), y: GY, height: e.T.hy, flip: false, seed: 1 + (G.sparkN++ % 9) });
   if (e.hp <= 0) killEnemy(e);
 }
 
