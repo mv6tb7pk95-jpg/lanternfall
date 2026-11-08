@@ -4,14 +4,16 @@
 //   act skill         a pixelfx move played by startSkill; damage lands in a fixed zone at each real hit (zoneHit)
 //   projectile skill  an act skill whose projectile is followed frame by frame and hurts the first enemy it touches
 //                     (arrow, pistol, rocket, fireball, ice lance; the flight data is in projectile.js)
-//   zone skill        one effect with no act (see zoneskill.js)
+//   zone skill        one effect with no act (see zoneskill.js); with `heal` it restores the hero instead of hurting anyone
+// Class passives (passives.js) are applied in rollDamage (crit), hurtEnemy (kindled, far, heal) and hurtPlayer (damage taken).
 // Co-op hunt (coop.js): a GUEST's hurtEnemy only tells the host (sendHit) and shows the hit; the host's remoteHit() applies it.
 import { G, $ } from "./state.js";
-import { GY } from "./world.js";
+import { GY, tintOpts } from "./world.js";
 import { createFx } from "./px.js";
 import { startSkill } from "./skills.js";
 import { isZoneSkill, zoneCast, spawnZone, stepZone } from "./zoneskill.js";
 import { prepared, attachFlights } from "./projectile.js";
+import { PASSIVES, passiveHit } from "./passives.js";
 import { sendHit } from "./net.js";
 
 /** Start a pixelfx effect that the game owns (a hit spark, an explosion...). Capped so the page stays fast. */
@@ -32,17 +34,19 @@ export function shake(sec, amp) {
   }
 }
 
-/** base damage -> final damage: weapon bonus, +-8% variance, 5% base crit chance (plus gear) for x1.5. */
+/** base damage -> final damage: weapon bonus, +-8% variance, 5% base crit chance (plus gear and passive) for x1.5 (or the passive's critMul). */
 export function rollDamage(base) {
-  const st = G.st;
+  const st = G.st, P = PASSIVES[G.key];
   let d = base * (1 + st.atk) * (0.92 + Math.random() * 0.16);
-  if (Math.random() < 0.05 + st.crit) d *= 1.5;
+  if (Math.random() < 0.05 + st.crit + ((P && P.crit) || 0)) d *= (P && P.critMul) || 1.5;
   return Math.max(1, Math.round(d));
 }
 
 export function hurtEnemy(e, base, dir, push = 1) {
   if (e.dead) return;
-  const d = rollDamage(base);
+  const ph = passiveHit(G.key, Math.abs(e.x - G.player.x), G.time);
+  const d = rollDamage(base * ph.mul);
+  if (ph.heal) G.player.hp = Math.min(G.player.maxHp, G.player.hp + ph.heal);
   const proxy = !!(G.coop && !G.coop.host && e.nid); // a co-op guest: the host owns this monster
   if (proxy) {
     sendHit(e.nid, d);
@@ -51,6 +55,8 @@ export function hurtEnemy(e, base, dir, push = 1) {
   e.show = 2.5;
   e.kb = dir * 55 * Math.min(2.5, Math.abs(push)) * (e.boss ? 0.2 : 1); // a boss is hard to push around
   spawnFx(G.M["hit-spark"], { x: Math.round(e.x), y: GY, height: e.T.hy, flip: dir < 0, seed: 1 + (G.sparkN++ % 9) });
+  // a kindled hit (Emberist passive) gets a second, fire-coloured spark so the player can see it
+  if (ph.kindled) spawnFx(G.M["hit-spark"], { x: Math.round(e.x), y: GY, height: e.T.hy + 6, flip: dir < 0, seed: 11, ...tintOpts(G.M["hit-spark"], "fire") });
   if (!proxy && e.hp <= 0) killEnemy(e);
 }
 
@@ -82,8 +88,8 @@ function killEnemy(e) {
 
 /** Returns true when the hero has died. */
 export function hurtPlayer(dmg, fromX) {
-  const p = G.player;
-  p.hp -= dmg;
+  const p = G.player, P = PASSIVES[G.key];
+  p.hp -= P && P.dr ? Math.max(1, Math.round(dmg * (1 - P.dr))) : dmg; // Warden passive: some of the blow is ignored
   p.hurt = 0.8;
   spawnFx(G.M["hit-spark"], { x: Math.round(p.x), y: GY, height: 22, flip: fromX > p.x, seed: 2 });
   return p.hp <= 0;
@@ -154,9 +160,15 @@ function scriptedHit(run) {
 }
 
 // ---------------------------------------------------------------- zone skills (one effect, no act)
-/** One damage tick of a zone skill: everything standing in the area takes dmg x mul. */
+/** One tick of a zone skill: everything standing in the area takes dmg x mul (a healing zone restores the hero instead). */
 function zoneTick(z, mul) {
-  const s = z.skill, lo = z.x - s.half, hi = z.x + s.half;
+  const s = z.skill;
+  if (s.heal) {
+    const p = G.player;
+    p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * s.heal * mul));
+    return;
+  }
+  const lo = z.cx - s.half, hi = z.cx + s.half;
   for (const e of G.enemies.slice()) if (e.x + e.T.half >= lo && e.x - e.T.half <= hi) hurtEnemy(e, s.dmg * mul, z.dir, s.push ?? 0.3);
 }
 
