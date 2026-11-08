@@ -1,7 +1,8 @@
 // Lanternfall multiplayer client (server/relay.js). Imports nothing from the game.
 // Party room: net, listRooms, createRoom, joinRoom, leaveRoom, onNet, sendState, setReady, startHunt, sendHit, sendMonsters...
 // Shared Hub channel: hub, hubConnected, joinHub, leaveHub, sendHubState, hubAway. stepRemotes(dt) smooths both crowds.
-const LS_RELAY = "lf.relay", LS_NAME = "lf.name";
+// Class: getCls / setCls keep the chosen class key in localStorage; sendClass tells the party room and the hub channel.
+const LS_RELAY = "lf.relay", LS_NAME = "lf.name", LS_CLASS = "lf.class";
 export const DEFAULT_RELAY = "https://lanternfall-relay.orbit-language-f50062.workers.dev";
 
 const ls = {
@@ -41,6 +42,14 @@ export function setName(n) {
   n = String(n || "").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 16);
   if (n) ls.set(LS_NAME, n);
   return getName();
+}
+
+/** The saved class key ("" if none). heroclass.js checks it against the real class list. */
+export const getCls = () => ls.get(LS_CLASS).replace(/[^a-z]/g, "").slice(0, 12);
+export function setCls(k) {
+  k = String(k || "").replace(/[^a-z]/g, "").slice(0, 12);
+  ls.set(LS_CLASS, k);
+  return k;
 }
 
 export const net = { ws: null, you: null, host: null, room: null, phase: "lobby", players: new Map() };
@@ -133,7 +142,7 @@ export function joinRoom(id, pw = "", cls = "") {
       reject(new Error(msg));
     };
     net.ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", name: getName(), cls, pw }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", name: getName(), cls: cls || getCls(), pw }));
     ws.onmessage = (ev) => {
       let m;
       try {
@@ -199,6 +208,11 @@ function handle(m) {
       const p = net.players.get(m.id);
       if (p) p.ready = !!m.v;
       return emit("ready", m);
+    }
+    case "cls": {
+      const p = net.players.get(m.id);
+      if (p && typeof m.c === "string") p.cls = m.c;
+      return emit("cls", m);
     }
     case "start":
       net.phase = "hunt";
@@ -271,6 +285,9 @@ function hubMsg(m) {
     p.x = m.x; p.y = m.y; p.d = m.d; p.a = m.a; p.hp = m.hp; p.mh = m.mh; p.pt = m.pt || "";
     if (m.c) p.cls = m.c;
     p.t = now;
+  } else if (m.t === "cls") {
+    const p = hub.players.get(m.id);
+    if (p && typeof m.c === "string") p.cls = m.c;
   } else if (m.t === "out") hub.players.delete(m.id);
   else if (m.t === "near") hub.near = m.n | 0;
 }
@@ -299,7 +316,7 @@ function openHub(ch, cls) {
     };
     const tm = setTimeout(() => fin(null, new Error("The server did not answer.")), 8000);
     hub.ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", name: getName(), cls }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", name: getName(), cls: cls || getCls() }));
     ws.onmessage = (ev) => {
       let m;
       try {
@@ -359,6 +376,16 @@ export function leaveHub() {
 export const sendHubState = (s) => hubSend({ t: "s", ...s });
 /** Tell the channel we left the hub (a hunt started), so others stop drawing us. */
 export const hubAway = () => hubSend({ t: "away" });
+
+/** The player chose a class: update our own entry in the party room and tell the party room and the hub channel.
+ *  The state messages also carry the class, so a relay that does not know "cls" still gets it from the next one. */
+export function sendClass(k) {
+  k = String(k || "").replace(/[^a-z]/g, "").slice(0, 12);
+  const me = net.players.get(net.you);
+  if (me) me.cls = k;
+  send({ t: "cls", c: k });
+  hubSend({ t: "cls", c: k });
+}
 
 /** Smooths drawn positions (vx, vy) of both crowds toward the last position received. */
 export function stepRemotes(dt) {
