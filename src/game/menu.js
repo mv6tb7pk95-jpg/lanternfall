@@ -1,11 +1,12 @@
 // Lanternfall: the menus. Main menu -> (Story: chapter list | Endless) -> class select -> beginRun() in run.js.
-// Also wires the Forge and Loadout screens, the hub buildings (hub.js) and the buttons on the result screen.
+// Also wires the Forge and Loadout screens, the hub doors (hub.js) and the buttons on the result screen.
 // Once the hero has entered the hub (G.home === "hub"), every Back button returns to the square instead of the main menu,
-// and Story / Endless are reached through the Dungeon Gate.
+// and Story / Endless are reached through the Dungeon Gate. A hunt door (hunts.js) goes straight to the class select.
 import { $, G, fail } from "./state.js";
 import { show, refreshMenu, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
 import { CHAPTERS } from "./story.js";
+import { HUNTS } from "./hunts.js";
 import { loadSave } from "./save.js";
 import { itemById } from "./gacha.js";
 import { initForge, renderForge } from "./forge.js";
@@ -13,7 +14,7 @@ import { initLoadout, renderLoadout } from "./loadout-ui.js";
 import { beginRun } from "./run.js";
 import { enterHub, initHub, hubActions } from "./hub.js";
 
-const pick = { chapter: null }; // what the class cards will start: a chapter, or null for endless
+const pick = { chapter: null, hunt: null }; // what the class cards will start: a chapter, a hunt, or neither (endless)
 let tipped = false; // the controls tip is shown once per visit to the page
 
 const inHub = () => G.home === "hub";
@@ -70,9 +71,14 @@ function openChapters() {
   show("chapters");
 }
 
-function openSelect(chapter) {
+/** The class select. chapter: a story chapter; hunt: a hunting ground; neither: endless. */
+function openSelect(chapter, hunt = null) {
   pick.chapter = chapter;
-  $("selSub").textContent = (chapter ? "Chapter " + chapter.id + ": " + chapter.name : "Endless") + " · choose your lantern-bearer";
+  pick.hunt = hunt;
+  const what = hunt
+    ? hunt.title + ": defeat " + hunt.quota + " monsters, reward " + hunt.reward + " shards"
+    : chapter ? "Chapter " + chapter.id + ": " + chapter.name : "Endless";
+  $("selSub").textContent = what + " · choose your lantern-bearer";
   const s = loadSave(), w = itemById(s.eq.weapon), a = itemById(s.eq.acc);
   $("selGear").textContent = "Gear: " + (w ? w.name : "no weapon") + " · " + (a ? a.name : "no accessory") + " (change it in the Lantern Forge). Skills: change them in Loadout.";
   show("select");
@@ -94,7 +100,7 @@ export function initMenu() {
     const b = document.createElement("button");
     b.className = "card";
     b.innerHTML = "<b>" + c.name + "</b><small>" + c.blurb + "</small><small>HP " + c.hp + " · up to 4 skills + attack</small>";
-    b.addEventListener("click", () => beginRun(key, pick.chapter).catch(fail));
+    b.addEventListener("click", () => beginRun(key, pick.chapter, pick.hunt).catch(fail));
     $("cards").append(b);
   }
 
@@ -105,11 +111,19 @@ export function initMenu() {
   $("btnForge").addEventListener("click", openForge);
   $("btnLoadout").addEventListener("click", openLoadout);
 
-  // the hub: what each building opens (the Shop has no entry yet, so hub.js says "not open yet")
+  // the hub: what each door opens (the Shop has no entry yet, so hub.js says "not open yet")
   hubActions.forge = openForge;
   hubActions.loadout = openLoadout;
   hubActions.gate = () => show("gate");
   hubActions.party = () => show("party");
+  hubActions.hunt = (id) => {
+    const h = HUNTS[id];
+    if (!h) {
+      toast("That hunting ground is not open yet.");
+      return goBack(); // hub.js has already closed the square, so go back into it
+    }
+    openSelect(null, h);
+  };
   $("gStory").addEventListener("click", openChapters);
   $("gEndless").addEventListener("click", () => openSelect(null));
   $("gBack").addEventListener("click", goBack);
@@ -118,10 +132,10 @@ export function initMenu() {
   // back buttons
   $("chBack").addEventListener("click", toGate);
   $("fBack").addEventListener("click", goBack);
-  $("selBack").addEventListener("click", () => (pick.chapter ? openChapters() : toGate()));
+  $("selBack").addEventListener("click", () => (pick.hunt ? goBack() : pick.chapter ? openChapters() : toGate()));
 
   // result screen
-  $("retry").addEventListener("click", () => beginRun(G.key, G.chapter).catch(fail));
+  $("retry").addEventListener("click", () => beginRun(G.key, G.chapter, G.hunt).catch(fail));
   $("nextCh").addEventListener("click", () => {
     const n = G.chapter && CHAPTERS.find((c) => c.id === G.chapter.id + 1);
     if (n) beginRun(G.key, n).catch(fail);
