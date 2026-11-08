@@ -8,6 +8,7 @@ import { HUNTS } from "./hunts.js";
 import { loadSave } from "./save.js";
 import { itemById } from "./gacha.js";
 import { initForge, renderForge } from "./forge.js";
+import { initShop, renderShop } from "./shop-ui.js";
 import { initLoadout, renderLoadout } from "./loadout-ui.js";
 import { beginRun } from "./run.js";
 import { enterHub, initHub, hubActions } from "./hub.js";
@@ -55,6 +56,7 @@ function openSelect(chapter, hunt = null, viaQuests = false) {
 }
 
 function openForge() { renderForge(); show("forge"); }
+function openShop() { renderShop(); show("shop"); }
 function openLoadout() { renderLoadout(); show("loadout"); }
 
 function openQuests() {
@@ -77,14 +79,13 @@ function openQuests() {
 /** Sidebar: close the square (the hero would otherwise keep walking under the panel), then open the panel. */
 function side(id) {
   if (G.loading || G.state === "play") return;
-  if (id === "shop") return toast("The Shop opens in the next update.");
   if (G.state === "hub") {
     G.state = "menu";
     inp.left = inp.right = inp.jump = inp.atk = inp.up = inp.down = false;
     document.body.classList.remove("hub");
     $("hubPrompt").hidden = true;
   }
-  ({ gear: openForge, cls: openLoadout, quests: openQuests, settings: () => show("settings") })[id]();
+  ({ gear: openForge, cls: openLoadout, shop: openShop, quests: openQuests, settings: () => show("settings") })[id]();
 }
 
 export function initMenu() {
@@ -102,6 +103,7 @@ export function initMenu() {
   );
 
   hubActions.forge = openForge;
+  hubActions.shop = openShop;
   hubActions.loadout = openLoadout;
   hubActions.gate = () => show("gate");
   hubActions.party = () => show("party");
@@ -125,6 +127,7 @@ export function initMenu() {
   });
 
   initForge();
+  initShop(goBack);
   initLoadout(goBack);
   initHub();
 }
