@@ -1,6 +1,6 @@
 // Lanternfall: menus. Title -> Play -> the hub. The right sidebar opens Gear, Class, Shop, Quests and Settings.
 // Story / Endless are reached through the Dungeon Gate; a hunt door or the Quests panel opens the class select.
-import { $, G, inp, fail } from "./state.js";
+import { $, G, fail } from "./state.js";
 import { show, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
 import { CHAPTERS } from "./story.js";
@@ -11,7 +11,7 @@ import { initForge, renderForge } from "./forge.js";
 import { initShop, renderShop } from "./shop-ui.js";
 import { initLoadout, renderLoadout } from "./loadout-ui.js";
 import { beginRun } from "./run.js";
-import { enterHub, initHub, hubActions } from "./hub.js";
+import { enterHub, initHub, hubActions, leave as leaveHub } from "./hub.js";
 import { initTitle, showTitle } from "./title.js";
 
 const pick = { chapter: null, hunt: null, viaQuests: false };
@@ -76,15 +76,11 @@ function openQuests() {
   show("quests");
 }
 
-/** Sidebar: close the square (the hero would otherwise keep walking under the panel), then open the panel. */
+/** Sidebar: close the square (the hero would otherwise keep walking under the panel), then open the panel.
+ *  leaveHub() also remembers where the hero stands, so Back puts him at the same spot. */
 function side(id) {
   if (G.loading || G.state === "play") return;
-  if (G.state === "hub") {
-    G.state = "menu";
-    inp.left = inp.right = inp.jump = inp.atk = inp.up = inp.down = false;
-    document.body.classList.remove("hub");
-    $("hubPrompt").hidden = true;
-  }
+  if (G.state === "hub") leaveHub();
   ({ gear: openForge, cls: openLoadout, shop: openShop, quests: openQuests, settings: () => show("settings") })[id]();
 }
 
