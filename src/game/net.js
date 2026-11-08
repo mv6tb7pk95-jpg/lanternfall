@@ -1,9 +1,8 @@
-// Lanternfall multiplayer client (talks to server/relay.js; imports nothing from the game).
-//   Party room (2-4 players, for hunts): net, listRooms, createRoom, joinRoom, leaveRoom, onNet, sendState, setReady, ...
-//   Shared Hub channel (everyone in the hub): hub, hubConnected, joinHub, leaveHub, sendHubState, hubAway
-//   stepRemotes(dt) smooths both crowds. The relay address: setRelay("https://....workers.dev") or DEFAULT_RELAY.
+// Lanternfall multiplayer client (server/relay.js). Imports nothing from the game.
+// Party room: net, listRooms, createRoom, joinRoom, leaveRoom, onNet, sendState, setReady, startHunt, sendHit, sendMonsters...
+// Shared Hub channel: hub, hubConnected, joinHub, leaveHub, sendHubState, hubAway. stepRemotes(dt) smooths both crowds.
 const LS_RELAY = "lf.relay", LS_NAME = "lf.name";
-export const DEFAULT_RELAY = "";
+export const DEFAULT_RELAY = "https://lanternfall-relay.orbit-language-f50062.workers.dev";
 
 const ls = {
   get(k) {
@@ -115,8 +114,7 @@ export function joinRoom(id, pw = "", cls = "") {
   if (!base) return Promise.reject(new Error("No relay server is set yet."));
   id = String(id || "").trim().toUpperCase();
   return new Promise((resolve, reject) => {
-    let done = false;
-    let ws;
+    let done = false, ws;
     try {
       ws = new WebSocket(base.replace(/^http/, "ws") + "/ws?room=" + encodeURIComponent(id));
     } catch {
@@ -241,7 +239,7 @@ export function sendState(s) {
 }
 
 // ---------------------------------------------------------------- shared Hub channel
-// hub.players holds the players in OUR hub room only (the server filters). hub.near = how many others share our room.
+// hub.players = the players in OUR hub room only (the server filters). hub.near = how many others share our room.
 export const hub = { ws: null, you: null, ch: 0, near: 0, players: new Map() };
 export const hubConnected = () => !!hub.ws && hub.ws.readyState === 1 && !!hub.you;
 let hubBusy = false, hubPing = null;
@@ -277,7 +275,7 @@ function hubMsg(m) {
   else if (m.t === "near") hub.near = m.n | 0;
 }
 
-/** Resolves "ok", "full" (that channel is full) or "err"; rejects when the server cannot be reached. */
+/** Resolves "ok", "full" or "err"; rejects when the server cannot be reached. */
 function openHub(ch, cls) {
   return new Promise((resolve, reject) => {
     let ws, done = false;
@@ -329,7 +327,7 @@ function openHub(ch, cls) {
   });
 }
 
-/** Joins the first Hub channel (1 to 5) that has room. Resolves true when connected; never rejects. */
+/** Joins the first Hub channel (1 to 5) with room. Resolves true when connected; never rejects. */
 export async function joinHub(cls = "") {
   if (hubConnected() || hubBusy || !relayUrl()) return hubConnected();
   hubBusy = true;
