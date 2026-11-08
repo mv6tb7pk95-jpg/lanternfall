@@ -8,6 +8,7 @@
 // A world with vertical = true (the hub) also scrolls up and down: frame.oy is G.camY. Runs have no such world, so oy stays 0.
 // Three kinds of run: story (a chapter), endless, and a monster hunt (G.mode "hunt", data and spawner in hunts.js).
 // A hunt is won when G.kills reaches the quota, and the hero goes back to the same hub door afterwards.
+// A co-op hunt is a hunt with a 4th beginRun argument { host, n } (coop.js): the host runs the monsters, guests draw them.
 import { createFrame, clearFrame, composite, loadFx } from "./px.js";
 import { VW, VH, WORLD_W, DEFAULT_THEME, createWorld } from "./world.js";
 import { createPlayer, updatePlayer, drawPlayer, updateEnemy, drawEnemy, touching } from "./entities.js";
@@ -17,6 +18,7 @@ import { updateAttack, drawShots } from "./attack.js";
 import { hurtPlayer, cast, updateProjectiles, updateZones } from "./combat.js";
 import { updateSpawns } from "./waves.js";
 import { updateHunt, startHunt } from "./hunts.js";
+import { initCoop, scaleHunt, coopUpdate, coopDown, coopEnd, stepProxy, aimAt, drawMates } from "./coop.js";
 import { show, dialogue } from "./ui.js";
 import { loadSave, writeSave } from "./save.js";
 import { statsOf } from "./gacha.js";
@@ -38,8 +40,9 @@ let winT = 1.4; // after the boss falls (or the hunt quota is reached), the game
 /**
  * chapter: an entry of CHAPTERS for story mode, or null.
  * hunt: an entry of HUNTS (hunts.js) for a monster hunt, or null. With neither, it is endless mode.
+ * party: { host, n } for a co-op hunt (coop.js), or null.
  */
-export async function beginRun(key, chapter, hunt = null) {
+export async function beginRun(key, chapter, hunt = null, party = null) {
   if (G.loading) return;
   G.loading = true;
   const c = CLASSES[key], atk = BASIC[key];
@@ -65,9 +68,12 @@ export async function beginRun(key, chapter, hunt = null) {
     return fail(e);
   }
 
+  const coop = hunt && party;
+  if (coop) hunt = scaleHunt(hunt, party.n); // a copy: more monsters, tougher, more to defeat for a bigger party
   const st = statsOf(save);
   Object.assign(G, {
     state: chapter ? "dialogue" : "play", mode: hunt ? "hunt" : chapter ? "story" : "endless", key, cls: c, skills, chapter: chapter || null, hunt: hunt || null, st,
+    coop: coop ? initCoop(party) : null,
     player: createPlayer(c, st), world, mods,
     enemies: [], runs: [], fxs: [], shots: [], missiles: [], zones: [],
     cds: skills.map(() => 0), cdMax: skills.map(() => 0), cdEls: [],
@@ -112,6 +118,7 @@ async function finish(won) {
   G.hitStop = 0;
   G.shakeT = 0;
   inp.left = inp.right = inp.jump = inp.atk = false;
+  if (G.coop) coopEnd(won); // the host tells the party (a guest does nothing here)
   const s = loadSave(), ch = G.chapter, story = G.mode === "story", hunt = G.mode === "hunt" ? G.hunt : null;
   let gain = G.got, note = "";
   if (hunt) {
@@ -119,6 +126,7 @@ async function finish(won) {
       gain += hunt.reward; // a hunt can be repeated, and pays its reward every time
       note = "Hunt complete!";
     } else note = "Hunt failed: " + G.kills + "/" + hunt.quota;
+    if (G.coop && G.coop.deaths) note += " · knocked down " + G.coop.deaths + "×";
   } else if (story && won) {
     const first = s.cleared < ch.id;
     gain += first ? ch.reward : Math.round(ch.reward * 0.4); // a replay pays 40%
@@ -157,6 +165,8 @@ export function updateRun(dt) {
   G.world.update(dt, G.cam);
   if (G.shakeT > 0) G.shakeT = Math.max(0, G.shakeT - dt); // real time: the shake plays out during the hit-stop too
   if (G.state !== "play") return;
+  // co-op: the host ended the hunt, or left (the host's own end goes through the quota check below)
+  if (G.coop && G.coop.over) return void finish(G.coop.over === "win").catch(fail);
   if (G.hitStop > 0) {
     // a projectile just hit: everything holds still for a beat
     G.hitStop = Math.max(0, G.hitStop - dt);
@@ -178,21 +188,27 @@ export function updateRun(dt) {
   if (frozen) return;
 
   G.time += dt;
-  const p = G.player;
+  const p = G.player, guest = !!(G.coop && !G.coop.host);
   updatePlayer(p, dt, inp);
   inp.jump = false;
   updateAttack(dt);
   updateProjectiles(); // projectile skills: the tip of each is followed here, the first enemy it touches is hurt
   updateZones(dt); // zone skills: their damage ticks
   G.cds = G.cds.map((c) => Math.max(0, c - dt));
-  if (G.mode === "hunt") updateHunt(dt); // a hunt spawns its own monsters
-  else updateSpawns(dt);
+  if (G.mode === "hunt") {
+    if (!guest) updateHunt(dt); // a hunt spawns its own monsters (a co-op guest gets them from the host instead)
+  } else updateSpawns(dt);
+  if (G.coop) coopUpdate(dt); // the host sends its monster list; a guest applies the last one it got
 
   for (const e of G.enemies) {
-    updateEnemy(e, dt, p);
+    if (guest) stepProxy(e, dt);
+    else updateEnemy(e, dt, G.coop ? aimAt(e, p) : p);
     if (touching(e, p) && e.hitCd <= 0 && p.hurt <= 0) {
       e.hitCd = 1.1;
-      if (hurtPlayer(e.dmg, e.x)) return void finish(false).catch(fail);
+      if (hurtPlayer(e.dmg, e.x)) {
+        if (!G.coop) return void finish(false).catch(fail);
+        coopDown(); // a co-op hero is knocked down, not out
+      }
     }
   }
   for (const fx of G.fxs) fx.update(dt);
@@ -221,6 +237,7 @@ export function drawRun() {
   const bg = W.drawBg(frame.ox, frame.oy);
   W.drawProps(frame, frame.ox, frame.oy);
   for (const e of G.enemies) drawEnemy(frame, e);
+  drawMates(frame); // co-op: the other heroes (a no-op outside a co-op hunt)
   if (!p.locked) drawPlayer(frame, p);
   drawShots(frame);
   // a skill in progress draws its effect, the hero (until control returns) and nothing else
