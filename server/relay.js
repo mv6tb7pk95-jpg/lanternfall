@@ -1,30 +1,15 @@
-// Lanternfall relay server: a Cloudflare Worker with two Durable Objects.
-//
-//   Worker  routes   GET /rooms    list of public rooms (asks the Lobby)
-//                    POST /create  makes a room, returns { id }
-//                    GET /ws?room=ID  WebSocket to that room
-//   Room    one per party (named by its 5-letter code). Holds the players, relays their messages, picks the host.
-//   Lobby   one object ("main") that remembers which public rooms exist, so the Party Board can list them.
-//
-// The server does NOT run the game. It only relays messages. The HOST player's browser runs the hunt (monsters, quota)
-// and sends snapshots; guests send their positions and the hits they land. That means a modified client can cheat,
-// which is fine for a friends-only co-op game but not for a competitive one.
-//
-// Messages (JSON, always { t: "...", ... }):
-//   client -> server   hello {name, cls, pw}   first message after connecting
-//                      s {x, y, d, a, hp, mh, c, r}   my state (position, facing, animation, health, class, room)
-//                      ready {v}   chat {text}   set {hunt, name} (host)   start {} (host)
-//                      hit {m, d} (guest: I hit monster m for d)   mon {k, q, l} (host: monster list + kills)   end {res, kills} (host)
-//   server -> client   welcome {you, host, room, phase, players}   err {code}   join {p}   leave {id}   host {id}
-//                      room {room}   ready {id, v}   start {hunt, seed, ids}   end {res, kills}   chat {id, name, text}
-//                      s {id, ...}   hit {id, m, d} (host only)   mon {k, q, l}
-//
-// Deploy: cd server, npx wrangler deploy. Then put the printed https://...workers.dev address into the game.
+// Lanternfall relay (Cloudflare Worker + Durable Objects). It only relays messages; the host's browser runs hunts.
+//   GET /rooms  GET /create(POST)  GET /ws?room=ID   party rooms (Room) listed by Lobby
+//   GET /hub?ch=1..9   shared Hub channel (Hub, named hub_channel_N): every player in the hub sees the others in the same hub room
+// Hub messages: client hello{name,cls} | s{x,y,d,a,hp,mh,c,r,pt} | away | ping
+//               server welcome{you} | in{id,name,cls,pt,r,x,y,d,a,hp,mh} | s{id,...} | out{id} | near{n} | err{code}
+// A player only receives messages from players in the SAME hub room (spatial filter). Deploy: cd server && npx wrangler deploy
 
 const ORIGINS = ["https://mv6tb7pk95-jpg.github.io", "http://localhost:8000", "http://127.0.0.1:8000"];
 const HUNTS = ["grave", "hollow", "slag"];
-const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 letters and digits, no I or O
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ID_RE = /^[A-HJ-NP-Z2-9]{5}$/;
+const HUB_MAX = 30;
 
 const clean = (s, n) => String(s ?? "").replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, n);
 const num = (v, lo, hi, d = 0) => {
@@ -81,18 +66,144 @@ export default {
       return env.ROOM.get(env.ROOM.idFromName(id)).fetch(req);
     }
 
+    if (url.pathname === "/hub") {
+      if (req.headers.get("Upgrade") !== "websocket") return json({ error: "Expected a WebSocket." }, 426);
+      const ch = url.searchParams.get("ch") || "1";
+      if (!/^[1-9]$/.test(ch)) return json({ error: "Bad channel." }, 400);
+      return env.HUB.get(env.HUB.idFromName("hub_channel_" + ch)).fetch(req);
+    }
+
     return json({ ok: true, service: "lanternfall-relay" });
   },
 };
+
+export class Hub {
+  constructor() {
+    this.players = new Map(); // id -> { id, ws, name, cls, pt, r, st, ts }
+    this.seq = 0;
+  }
+
+  async fetch() {
+    const [client, server] = Object.values(new WebSocketPair());
+    server.accept();
+    let me = null;
+    server.addEventListener("message", (ev) => {
+      if (typeof ev.data !== "string" || ev.data.length > 1024) return;
+      let m;
+      try {
+        m = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (!m || typeof m.t !== "string") return;
+      if (!me) {
+        if (m.t === "hello") me = this.hello(server, m);
+        return;
+      }
+      this.msg(me, m);
+    });
+    const bye = () => {
+      if (me) this.drop(me);
+      me = null;
+    };
+    server.addEventListener("close", bye);
+    server.addEventListener("error", bye);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  tx(p, o) {
+    try {
+      p.ws.send(JSON.stringify(o));
+    } catch {}
+  }
+
+  peers(r, except) {
+    return [...this.players.values()].filter((q) => q.r === r && q !== except);
+  }
+
+  near(r) {
+    if (!r) return;
+    const l = this.peers(r);
+    for (const q of l) this.tx(q, { t: "near", n: l.length - 1 });
+  }
+
+  info(p) {
+    return { id: p.id, name: p.name, cls: p.cls, pt: p.pt, r: p.r, ...p.st };
+  }
+
+  hello(ws, m) {
+    if (this.players.size >= HUB_MAX) {
+      try {
+        ws.send(JSON.stringify({ t: "err", code: "full" }));
+        ws.close(1000);
+      } catch {}
+      return null;
+    }
+    const p = { id: "h" + ++this.seq, ws, name: clean(m.name, 16) || "Hero", cls: clean(m.cls, 12), pt: "", r: "", st: null, ts: 0 };
+    this.players.set(p.id, p);
+    this.tx(p, { t: "welcome", you: p.id });
+    return p;
+  }
+
+  leaveRoom(me) {
+    const r = me.r;
+    if (!r) return;
+    me.r = "";
+    for (const q of this.peers(r)) {
+      this.tx(q, { t: "out", id: me.id });
+      this.tx(me, { t: "out", id: q.id });
+    }
+    this.near(r);
+    this.tx(me, { t: "near", n: 0 });
+  }
+
+  enter(me, r) {
+    me.r = r;
+    for (const q of this.peers(r, me)) {
+      this.tx(me, { t: "in", ...this.info(q) });
+      this.tx(q, { t: "in", ...this.info(me) });
+    }
+    this.near(r);
+  }
+
+  msg(me, m) {
+    if (m.t === "away") return this.leaveRoom(me);
+    if (m.t !== "s") return;
+    const now = Date.now();
+    if (now - me.ts < 60) return; // about 16 per second at most
+    me.ts = now;
+    const r = clean(m.r, 16);
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(r) || r === "run") return; // hub rooms only
+    me.st = { x: num(m.x, -200, 6000), y: num(m.y, -1000, 3000), d: m.d < 0 ? -1 : 1, a: clean(m.a, 8), hp: num(m.hp, 0, 1e6), mh: num(m.mh, 1, 1e6, 1) };
+    me.cls = clean(m.c, 12);
+    me.pt = ID_RE.test(String(m.pt || "")) ? m.pt : "";
+    if (me.r !== r) {
+      this.leaveRoom(me);
+      this.enter(me, r);
+      return;
+    }
+    const s = JSON.stringify({ t: "s", id: me.id, ...me.st, c: me.cls, pt: me.pt });
+    for (const q of this.peers(r, me)) {
+      try {
+        q.ws.send(s);
+      } catch {}
+    }
+  }
+
+  drop(me) {
+    this.leaveRoom(me);
+    this.players.delete(me.id);
+  }
+}
 
 export class Room {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    this.info = null; // { id, name, hunt, pw, pub, max }
-    this.players = new Map(); // id -> { id, ws, name, cls, ready, ts, cs }
+    this.info = null;
+    this.players = new Map();
     this.hostId = null;
-    this.phase = "lobby"; // lobby | hunt
+    this.phase = "lobby";
     this.seq = 0;
     this.hb = null;
   }
@@ -109,7 +220,7 @@ export class Room {
       const b = await req.json();
       this.info = { id: b.id, name: b.name, hunt: b.hunt, pw: b.pw, pub: !!b.pub, max: b.max };
       await this.state.storage.put("info", this.info);
-      await this.state.storage.setAlarm(Date.now() + 120000); // a room nobody joins is removed after 2 minutes
+      await this.state.storage.setAlarm(Date.now() + 120000);
       return new Response("ok");
     }
     if (url.pathname === "/ws") {
@@ -283,7 +394,7 @@ export class Room {
         this.touch();
         return;
       default:
-        return; // "ping" and anything unknown is ignored
+        return;
     }
   }
 
@@ -294,7 +405,7 @@ export class Room {
       return;
     }
     if (this.hostId === me.id) {
-      this.hostId = this.players.keys().next().value; // the longest-present player becomes host
+      this.hostId = this.players.keys().next().value;
       this.all({ t: "host", id: this.hostId });
     }
     this.all({ t: "leave", id: me.id });
@@ -336,7 +447,7 @@ export class Lobby {
       const now = Date.now();
       const out = [];
       for (const [id, r] of this.rooms) {
-        if (now - r.ts > 90000) this.rooms.delete(id); // a room that stopped reporting is gone
+        if (now - r.ts > 90000) this.rooms.delete(id);
         else if (r.pub && r.players > 0) out.push(r);
       }
       out.sort((a, b) => b.ts - a.ts);
