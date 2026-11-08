@@ -1,6 +1,6 @@
 // Lanternfall: persistent data. Everything the player keeps (shards, story progress, items, equipment, pity,
-// skill books and skill loadouts) lives in this one plain object and is stored in this browser's localStorage.
-// Nothing leaves the device. Data only: the rules that change it live in gacha.js, skillbook.js, loadout.js and the screens.
+// skill books, skill loadouts and shop upgrades) lives in this one plain object and is stored in this browser's localStorage.
+// Nothing leaves the device. Data only: the rules that change it live in gacha.js, skillbook.js, loadout.js, shop.js and the screens.
 const KEY = "lanternfall.save.v1"; // new fields are additive, so old saves still load
 
 const fresh = () => ({
@@ -15,6 +15,7 @@ const fresh = () => ({
   loadout: {}, // class id -> list of equipped skill ids, in slot order
   bookPity: 0, // skill book banner: pulls since the last legendary book (its own counter, separate from pity)
   bookPulls: 0, // skill book banner: total pulls
+  shop: {}, // shop upgrade id -> level (shop.js)
 });
 
 let cache = null;
@@ -37,6 +38,7 @@ export function loadSave() {
       if (o.loadout && typeof o.loadout === "object") {
         for (const [cls, ids] of Object.entries(o.loadout)) if (Array.isArray(ids)) s.loadout[cls] = ids.filter(isId).slice(0, 8);
       }
+      if (o.shop && typeof o.shop === "object") for (const [id, n] of Object.entries(o.shop)) if (Number.isFinite(n) && n > 0) s.shop[id] = Math.floor(n);
     }
   } catch (e) {
     // storage blocked (private mode) or corrupt: start fresh and keep playing
