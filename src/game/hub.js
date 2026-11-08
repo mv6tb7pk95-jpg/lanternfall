@@ -3,7 +3,8 @@
 // Keys: A D / arrows walk, Space jumps, Down + Space drops through a platform, Up / Down climb a rope.
 // Up at a door (and not at a rope) enters it; E and Enter always enter. Touch: the stick (controls.js) sets inp.up / inp.down.
 // Doors: "building" opens a screen through hubActions[id] (filled by menu.js); "portal" fades to another room;
-// "hunt" calls hubActions.hunt(huntId) once hunts exist (batch 3).
+// "hunt" calls hubActions.hunt(huntId) (menu.js opens the class select for that hunt).
+// leave() closes the square and remembers where the hero stands. Doors call it, and so does the sidebar (menu.js).
 import { $, G, inp, fail, setStatus } from "./state.js";
 import { show, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
@@ -130,7 +131,8 @@ export async function enterHub() {
   reveal(room.name, false);
 }
 
-function leave() {
+/** Close the square: remember where the hero stands (so Back returns him there), stop the walking, hide the prompt. */
+export function leave() {
   const p = G.player;
   if (p) last = { room: room.id, x: p.x, y: p.gy };
   G.state = "menu";
