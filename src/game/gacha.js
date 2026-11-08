@@ -4,6 +4,8 @@
 // Odds (shown to the player in the forge screen): Common 55% · Rare 30% · Epic 12% · Legendary 3%.
 // Pity: the 40th pull since your last Legendary is always a Legendary. A 10-pull always has at least one Rare or better.
 // Duplicates raise an item's level (each level adds 15% of its base stats, max level 6). Beyond max you get shards back.
+// statsOf() also adds the permanent upgrades bought in the Shop (shop.js).
+import { upgradeBonus } from "./shop.js";
 
 export const RARITY = {
   common: { name: "Common", rate: 55, color: "#b8b2c8", refund: 10 },
@@ -62,7 +64,7 @@ export function describe(item, lv = 1) {
     .join(", ");
 }
 
-/** The combined bonuses of what is equipped, as fractions (0.1 = 10%). */
+/** The combined bonuses of what is equipped plus the Shop upgrades, as fractions (0.1 = 10%). */
 export function statsOf(save) {
   const t = { atk: 0, hp: 0, cdr: 0, crit: 0, spd: 0, shard: 0 };
   for (const slot of ["weapon", "acc"]) {
@@ -70,6 +72,7 @@ export function statsOf(save) {
     if (!it || !lv || it.slot !== slot) continue;
     for (const [k, v] of Object.entries(it.stats)) t[k] += (v * levelMul(lv)) / 100;
   }
+  for (const [k, v] of Object.entries(upgradeBonus(save))) if (k in t) t[k] += v; // the Shop's permanent upgrades
   t.cdr = Math.min(0.4, t.cdr);
   t.crit = Math.min(0.6, t.crit);
   return t;
