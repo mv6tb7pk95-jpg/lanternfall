@@ -25,14 +25,14 @@ function goMenu() {
   show("menu");
 }
 
-/** Put the hero in the square. The first time, a short tip explains how to walk and enter buildings. */
+/** Put the hero in the square. The first time, a short tip explains how to walk, climb and enter doors. */
 async function toHub() {
   await enterHub();
   if (G.state !== "hub") return;
   $("toMenu").textContent = "BACK TO THE SQUARE";
   if (!tipped) {
     tipped = true;
-    toast("Walk to a building, then press E or tap the Enter button.", 5);
+    toast("Up or E enters a door. Up and Down climb ropes. Hold Down and press Jump to drop through a platform.", 6);
   }
 }
 
