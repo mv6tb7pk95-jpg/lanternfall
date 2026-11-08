@@ -1,14 +1,13 @@
-// Lanternfall: the Party Board screen. It builds its own markup inside #party (so game.html and ui.js need no change) and
-// talks to the relay only through net.js. Three views: the board (public rooms, join by code), the create form, and the room.
-// Start hunt: the host's button sends "start"; the relay answers EVERY member (the host too) with { hunt, seed, ids },
-// and begin() below starts the run for each of them: beginRun(class, null, hunt, { host, n }) (coop.js has the rules).
+// Lanternfall: the Party Board screen (markup built inside #party). Talks to the relay only through net.js.
+// Start flow: the relay sends {start} to every member; begin() starts the run (retrying while the game is busy loading),
+// then answers "go". Until "go" arrives the relay resends start, and an idle client asks "sync" every 4 s and when its tab returns.
 import { G, fail } from "./state.js";
 import { toast } from "./ui.js";
 import { HUNTS } from "./hunts.js";
 import { CLASSES } from "./skills.js";
 import { beginRun } from "./run.js";
 import { leave as leaveHub } from "./hub.js";
-import { net, connected, isHost, onNet, listRooms, createRoom, joinRoom, leaveRoom, setReady, setRoom, startHunt as startShared, chat, relayUrl, setRelay, getName, setName } from "./net.js";
+import { net, connected, isHost, onNet, send, listRooms, createRoom, joinRoom, leaveRoom, setReady, setRoom, startHunt as startShared, chat, relayUrl, setRelay, getName, setName } from "./net.js";
 
 const CSS = `
 #party .pb-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:flex-end;margin:8px 0}
@@ -77,19 +76,71 @@ async function join(id, pw) {
   render();
 }
 
-/** The relay said "start": begin the shared hunt with the class we picked last (Warden if none). */
+// ---------------------------------------------------------------- shared hunt start
+let pending = null, tries = 0, starting = false, doneSeed = null, tmr = null;
+
+/** The relay said "start". Every member runs this, the host too. A repeat of an already started hunt only answers "go" again. */
 function begin(m) {
-  if (G.loading) return;
-  if (G.state === "play" || G.state === "dialogue") {
-    toast("Your party started a hunt, but you are in the middle of a run.", 4);
+  if (m.seed === doneSeed) {
+    if (G.coop) send({ t: "go" });
     return;
   }
-  const h = HUNTS[m.hunt];
-  if (!h) return;
-  if (G.state === "hub") leaveHub(); // stop the walking first; this also remembers where we stood
-  const n = Array.isArray(m.ids) && m.ids.length ? m.ids.length : net.players.size;
-  beginRun(G.key || "warden", null, h, { host: isHost(), n }).catch(fail);
+  if (pending && pending.seed === m.seed) return;
+  pending = m;
+  tries = 0;
+  attempt();
 }
+
+function later() {
+  clearTimeout(tmr);
+  tmr = setTimeout(attempt, 400);
+}
+
+async function attempt() {
+  const m = pending;
+  if (!m || starting) return;
+  const h = HUNTS[m.hunt];
+  if (!h) {
+    pending = null;
+    return;
+  }
+  if (G.state === "play" || G.state === "dialogue") {
+    if (G.coop && !G.coop.over) return void (pending = null); // already in a shared hunt
+    pending = null;
+    return void toast("Your party started a hunt, but you are in the middle of a run.", 4);
+  }
+  if (G.loading) {
+    if (++tries > 40) pending = null; // gave up after about 16 s
+    else later();
+    return;
+  }
+  starting = true;
+  try {
+    if (G.state === "hub") leaveHub(); // stop the walking and remember where we stood
+    const n = Array.isArray(m.ids) && m.ids.length ? m.ids.length : net.players.size;
+    await beginRun(G.key || "warden", null, h, { host: isHost(), n });
+    if (G.mode === "hunt" && G.coop) {
+      doneSeed = m.seed;
+      pending = null;
+      send({ t: "go" });
+    } else if (++tries <= 40) later();
+    else pending = null;
+  } catch (e) {
+    pending = null;
+    fail(e);
+  } finally {
+    starting = false;
+  }
+}
+
+/** A member who is not in a run asks the relay whether a hunt is waiting for him (the relay ignores it otherwise). */
+function askSync() {
+  if (connected() && !starting && !pending && !(G.coop && G.state === "play")) send({ t: "sync" });
+}
+setInterval(askSync, 4000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) askSync();
+});
 
 function syncSide() {
   const b = document.querySelector('#side button[data-p="party"]');
@@ -240,7 +291,6 @@ function roomView(body, keep) {
   const acts = el("div", "pb-row");
   acts.append(btn(me && me.ready ? "Not ready" : "Ready", () => setReady(!(me && me.ready)), "btn small"));
   if (host) {
-    // the host can start when every other member is ready (alone, he can start at once)
     const waiting = [...net.players.values()].filter((p) => p.id !== net.host && !p.ready).length;
     const st = btn(waiting ? "Start hunt (" + waiting + " not ready)" : "Start hunt", () => startShared(), "btn small");
     st.disabled = net.phase !== "lobby" || waiting > 0;
@@ -296,7 +346,6 @@ function render() {
   syncSide();
 }
 
-/** Called each time the Party Board is opened. */
 export function renderParty() {
   if (!connected()) view = "board";
   say("");
@@ -324,6 +373,7 @@ export function initParty() {
 
   onNet((t, d) => {
     if (t === "start") begin(d);
+    if (t === "end" || t === "close") pending = null;
     if (t === "chat") {
       chatLog.push({ name: d.name, text: d.text });
       if (chatLog.length > 30) chatLog.shift();
