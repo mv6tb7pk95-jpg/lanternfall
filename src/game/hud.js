@@ -1,8 +1,10 @@
 // Lanternfall: the on-canvas HUD. main.js calls hud() every frame.
-import { $, G } from "./state.js";
+// presenceTick() (presence.js) also runs here: it sends our state to the party and updates the party panel on the left.
+import { $, G, fail } from "./state.js";
 import { loadSave } from "./save.js";
+import { presenceTick } from "./presence.js";
 
-let shown = -1;
+let shown = -1, presenceOk = true;
 
 export function hud() {
   const sh = loadSave().shards + (G.state === "play" ? G.got | 0 : 0);
@@ -10,6 +12,15 @@ export function hud() {
     shown = sh;
     const e = $("shardCt");
     if (e) e.textContent = sh;
+  }
+  if (presenceOk) {
+    // a fault in the party code must not stop the game loop: it is reported once and the party display is switched off
+    try {
+      presenceTick();
+    } catch (e) {
+      presenceOk = false;
+      fail(e);
+    }
   }
   const p = G.player;
   if (!p || !G.cls || G.state === "hub") return;
