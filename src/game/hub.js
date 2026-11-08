@@ -5,6 +5,7 @@
 // Doors: "building" opens a screen through hubActions[id] (filled by menu.js); "portal" fades to another room;
 // "hunt" calls hubActions.hunt(huntId) (menu.js opens the class select for that hunt).
 // leave() closes the square and remembers where the hero stands. Doors call it, and so does the sidebar (menu.js).
+// G.roomId is the id of the room the hero is in (presence.js sends it to the party), and drawRemotes() draws the party's heroes.
 import { $, G, inp, fail, setStatus } from "./state.js";
 import { show, toast } from "./ui.js";
 import { CLASSES } from "./skills.js";
@@ -13,6 +14,7 @@ import { VW, VH } from "./world.js";
 import { ROOMS, START, doorById } from "./fieldmaps.js";
 import { stepField, placeAt, doorAt, fieldCam } from "./fieldwalk.js";
 import { createFieldScene } from "./fielddraw.js";
+import { drawRemotes } from "./presence.js";
 
 export const hubActions = {};
 
@@ -92,7 +94,10 @@ function makeWorld() {
       if (G.state === "hub") tick(dt);
     },
     drawBg: (cx, cy) => scene.drawBg(cx, cy),
-    drawProps: (f, cx, cy) => scene.drawProps(f, cx, cy, near ? near.id : null),
+    drawProps(f, cx, cy) {
+      scene.drawProps(f, cx, cy, near ? near.id : null);
+      drawRemotes(f, room.id); // the other party members in this room, and the nametags
+    },
   };
 }
 
@@ -117,7 +122,7 @@ export async function enterHub() {
   placeAt(p, room, last.x, last.y);
   const c = fieldCam(p, room, VW, VH);
   Object.assign(G, {
-    state: "hub", home: "hub", world, player: p,
+    state: "hub", home: "hub", world, player: p, roomId: room.id,
     enemies: [], runs: [], fxs: [], shots: [], missiles: [], zones: [],
     boss: null, bossOut: false, bossDown: false, hitStop: 0, shakeT: 0, shake0: 0, shakeAmp: 0,
     cam: c.x, camY: c.y,
@@ -149,6 +154,7 @@ function travel(d) {
       const to = ROOMS[d.to];
       scene = await sceneOf(to);
       room = to;
+      G.roomId = to.id;
       const a = doorById(to, d.arrive);
       placeAt(G.player, to, a ? a.x : to.spawn.x, a ? a.y : to.spawn.y);
       const c = fieldCam(G.player, to, VW, VH);
