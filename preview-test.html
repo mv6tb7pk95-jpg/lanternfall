@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lanternfall effect preview test</title>
+<style>
+  body{margin:0;padding:16px;background:#07060d;color:#e8e3ff;font:15px/1.4 system-ui,sans-serif}
+  h1{font-size:18px;margin:0 0 4px}
+  h2{font-size:14px;margin:16px 0 6px;color:#ffc23d}
+  p{margin:0 0 8px;color:#a89fc8;font-size:13px}
+  button{min-height:44px;margin:0 6px 6px 0;padding:0 12px;border-radius:8px;border:1px solid #5b5080;background:#241f38;color:#f2eeff;font:inherit}
+  button.book{border-style:dashed}
+  #err{white-space:pre-wrap;color:#ff9a8a;font-size:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<h1>Effect preview test</h1>
+<p>Test page for preview.js only. It does not load the game and does not touch your save. Solid border = starter skill, dashed = skill book (all books are listed here, owned or not).</p>
+<div id="list">Loading…</div>
+<div id="err"></div>
+<script type="module">
+  const err = (e) => { document.getElementById("err").textContent += String((e && (e.stack || e.message)) || e) + "\n\n"; };
+  addEventListener("unhandledrejection", (e) => err(e.reason));
+  Promise.all([import("./src/game/skills.js"), import("./src/game/skillpool.js"), import("./src/game/preview.js")])
+    .then(([{ CLASSES }, { BOOKS }, { openSkillPreview }]) => {
+      const list = document.getElementById("list");
+      list.textContent = "";
+      for (const [key, c] of Object.entries(CLASSES)) {
+        const h = document.createElement("h2");
+        h.textContent = c.name;
+        list.append(h);
+        const add = (s, cls) => {
+          const b = document.createElement("button");
+          b.className = cls;
+          b.textContent = s.name;
+          b.addEventListener("click", () => openSkillPreview(s.id).catch(err));
+          list.append(b);
+        };
+        c.skills.forEach((s) => add(s, ""));
+        BOOKS.filter((b) => b.cls === key).forEach((s) => add(s, "book"));
+      }
+    })
+    .catch(err);
+</script>
+</body>
+</html>
