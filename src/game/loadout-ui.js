@@ -3,6 +3,10 @@
 // Starter skills are always available. Skill books show as locked until you pull them in the Lantern Forge.
 // The choice is saved per class (save.loadout) and run.js reads it when a run starts.
 //
+// Every skill card sits in a small wrapper (.lskw) with a PREVIEW button under the card, also for locked books.
+// The button is NOT inside the card button (a button inside a button is invalid, and a disabled card would swallow the tap).
+// preview.js is loaded only when PREVIEW is tapped, so a problem in it can never stop this screen from loading.
+//
 // Elements it expects in game.html: lTabs, lSlots, lPool, lMsg, lBack.
 // menu.js calls initLoadout(goBack) once and renderLoadout(classKey?) every time the screen opens.
 import { $ } from "./state.js";
@@ -41,6 +45,18 @@ function toggle(id) {
     msg = "Can't change that: " + r.reason + (/full/.test(r.reason) ? ". Remove a skill first." : ".");
   }
   renderLoadout();
+}
+
+// Opens the effect preview of one skill. A failure only shows a message on this screen; nothing else is touched.
+async function openPreview(id) {
+  const m = $("lMsg");
+  try {
+    const mod = await import("./preview.js");
+    if (!(await mod.openSkillPreview(id))) m.textContent = "There is no preview for this skill.";
+  } catch (e) {
+    console.error(e);
+    m.textContent = "The preview could not open: " + ((e && e.message) || e);
+  }
 }
 
 export function renderLoadout(classKey) {
@@ -89,10 +105,15 @@ export function renderLoadout(classKey) {
       el("small", "tag", !owned ? "Locked: find it in the Forge" : on ? "EQUIPPED (tap to remove)" : "Tap to equip")
     );
     if (owned) b.addEventListener("click", () => toggle(s.id));
-    pool.append(b);
+
+    const pv = el("button", "pvb", "PREVIEW");
+    pv.addEventListener("click", () => openPreview(s.id));
+    const wrap = el("div", "lskw");
+    wrap.append(b, pv);
+    pool.append(wrap);
   }
 
-  $("lMsg").textContent = msg || "Tap a skill to equip it, or tap a slot to remove it. Up to " + MAX_SLOTS + " skills per class.";
+  $("lMsg").textContent = msg || "Tap a skill to equip it, or tap a slot to remove it. Up to " + MAX_SLOTS + " skills per class. PREVIEW shows the effect.";
 }
 
 export function initLoadout(onBack) {
