@@ -5,6 +5,10 @@
 // The saved data is in save.js. Skill books are equipped on the Loadout screen (loadout-ui.js), not here.
 // menu.js calls initForge() once and renderForge() every time the screen opens.
 //
+// Every skill book card has a PREVIEW EFFECT button (also for books you don't own yet). It opens the modal of preview.js.
+// preview.js is loaded only when the button is tapped, so a problem in it can never stop the Forge from loading.
+// Gear (weapons and accessories) has no visual effect in the code, so it has no preview button.
+//
 // Elements it expects in game.html: fShards, fCount, fTabEq, fTabBk, the equipment panel (elements with class "fe":
 // fOdds, fPity, pull1, pull10, fMsg, fResults, fEquip, fInv) and the book panel (elements with class "fb":
 // bOdds, bPool, bPity, bPull1, bPull10, bMsg, bResults, bOwned), and fBack.
@@ -27,6 +31,18 @@ function el(tag, cls, text) {
   if (cls) e.className = cls;
   if (text != null) e.textContent = text;
   return e;
+}
+
+// Opens the effect preview of one skill book. A failure only shows a message under the books; nothing else is touched.
+async function openPreview(id) {
+  const m = $("bMsg");
+  try {
+    const mod = await import("./preview.js");
+    m.textContent = (await mod.openSkillPreview(id)) ? "" : "There is no preview for this skill.";
+  } catch (e) {
+    console.error(e);
+    m.textContent = "The preview could not open: " + ((e && e.message) || e);
+  }
 }
 
 function card(item, lv, tag) {
@@ -57,6 +73,9 @@ function bookCard(book, copies, tag) {
     el("small", "", "Cooldown " + book.cd + " s · damage " + book.dmg + (book.kind === "zone" ? " per tick" : " per hit"))
   );
   if (tag) d.append(el("small", "tag", tag));
+  const pv = el("button", "eq pv", "PREVIEW EFFECT");
+  pv.addEventListener("click", () => openPreview(book.id));
+  d.append(pv);
   return d;
 }
 
@@ -125,7 +144,7 @@ function renderBooks() {
   $("bPity").textContent =
     "Pity: a Legendary book is guaranteed in " + left + " pull" + (left === 1 ? "" : "s") +
     ". A 10-pull has at least one Rare or better. The first copy unlocks the skill. Extra copies count up to " + MAX_COPIES +
-    ", then refund shards. Equip books on the Loadout screen.";
+    ", then refund shards. Equip books on the Loadout screen. Tap PREVIEW EFFECT on any book to watch its effect.";
   $("bPull1").textContent = "PULL ×1 (" + BOOK_COST.one + ")";
   $("bPull10").textContent = "PULL ×10 (" + BOOK_COST.ten + ")";
   $("bPull1").disabled = save.shards < BOOK_COST.one;
