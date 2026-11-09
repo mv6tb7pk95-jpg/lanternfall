@@ -21,7 +21,7 @@
 // Numbers marked "guess" were NOT read from a timeline: watch the effect and adjust `hits` / `half` if damage looks out of sync.
 export const BOOKS = [
   // Warden. Hit at 0.17 s, a ring about 46 px around him: a wide, close, quick hit.
-  { id: "spin-slash", cls: "warden", rarity: "common", path: "melee/spin-slash", name: "Spin slash", cd: 4, dmg: 22, zone: [-55, 55] },
+  { id: "spin-slash", cls: "warden", rarity: "common", path: "melee/spin-slash", name: "Spin slash", cd: 4, dmg: 300, zone: [-55, 55] },
   // Warden. One hit at 0.335 s, the slam lands about 66 px ahead: slow, heavy, single blow.
   { id: "heavy-cleave", cls: "warden", rarity: "rare", path: "melee/heavy-cleave", name: "Heavy cleave", cd: 6, dmg: 45, zone: [25, 110] },
   // Warden. act book (read): one real hit at 0.15 s (push 3, a hard shove), the hammer lands 66 px ahead (act target x 66)
